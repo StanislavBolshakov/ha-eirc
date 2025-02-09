@@ -16,7 +16,9 @@ from homeassistant.helpers.translation import async_get_translations
 
 _LOGGER = logging.getLogger(__name__)
 
+
 SCAN_INTERVAL = timedelta(minutes=5)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -76,7 +78,6 @@ async def async_setup_entry(
     for device_id in devices_to_remove:
         device = device_registry.async_get(device_id)
         if device:
-
             remaining_entities = device_registry.async_entries_for_device(device_id)
             _LOGGER.debug(
                 "Device %s has %d remaining entities",
@@ -98,7 +99,6 @@ async def async_setup_entry(
             try:
                 meters_info = await client.get_meters_info(acc["id"])
                 for meter in meters_info:
-
                     for indication in meter["indications"]:
                         sensors.append(EIRCMeterSensor(client, acc, meter, indication))
             except Exception as err:
@@ -112,8 +112,8 @@ async def async_setup_entry(
 class EIRCSensor(SensorEntity):
     """Representation of an EIRC service sensor."""
 
-    _attr_has_entity_name = False  
-    _attr_translation_key = "eirc_sensor"  # Доработать
+    _attr_has_entity_name = False
+    _attr_translation_key = "eirc_sensor"
 
     def __init__(self, client: EIRCApiClient, account_data: dict) -> None:
         """Initialize the sensor."""
@@ -167,6 +167,7 @@ class EIRCSensor(SensorEntity):
             self._attr_available = True
             account_id = self._account_data["id"]
             balance = await self._client.get_account_balance(account_id)
+
             self._attr_native_value = balance
         except Exception as err:
             _LOGGER.error("Error updating sensor: %s", err)
@@ -177,8 +178,8 @@ class EIRCSensor(SensorEntity):
 class EIRCMeterSensor(SensorEntity):
     """Representation of an EIRC meter sensor."""
 
-    _attr_has_entity_name = False  
-    _attr_translation_key = "eirc_meter_sensor"  # Доработать
+    _attr_has_entity_name = False
+    _attr_translation_key = "eirc_meter_sensor"
 
     def __init__(
         self,
@@ -194,9 +195,9 @@ class EIRCMeterSensor(SensorEntity):
         self._indication_data = indication_data
         self._attr_unique_id = f"eirc_meter_{account_data['alias']}_{meter_data['id']['registration']}_{indication_data['meterScaleId']}"
         if meter_data["subserviceId"] == 54179:
-            self._attr_name = f"электроэнергия {meter_data['serial']} {indication_data['scaleName'].lower()}"
+            self._attr_name = f"Электроэнергия {indication_data['scaleName']} ({meter_data['id']['registration']})"
         else:
-            self._attr_name = f"{account_data['alias']} - {meter_data['name']} ({indication_data['scaleName']})"
+            self._attr_name = f"{meter_data['name']}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, account_data["tenancy"]["register"])},
             "name": account_data["alias"],
@@ -224,8 +225,6 @@ class EIRCMeterSensor(SensorEntity):
             "meter_name": self._meter_data["name"],
             "scale_name": self._indication_data["scaleName"],
             "scale_id": self._indication_data["meterScaleId"],
-            "meter_registration": self._meter_data["id"]["registration"],
-            "meter_scale_id": self._indication_data["meterScaleId"],
         }
 
     async def async_update(self) -> None:
@@ -273,6 +272,7 @@ class EIRCMeterSensor(SensorEntity):
                 self._attr_available = False
                 return
             self._indication_data = indication
+
             self._attr_native_value = indication["previousReading"]
         except Exception as err:
             _LOGGER.error("Error updating meter sensor: %s", err)
