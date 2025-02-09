@@ -1,3 +1,15 @@
+# [0.6.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.5.3...v0.6.0) (2025-02-09)
+
+
+### Bug Fixes
+
+* bugfix bump.sh ([5ed1c2d](https://github.com/StanislavBolshakov/ha-eirc/commit/5ed1c2d4e012869aa3ef5fc30ed7d704dcedd96c))
+
+
+### Features
+
+* **eirc:** component is completely rewritten for the new /v8 API endpoint. Added meters other than electricity. Added accounts. Added Config Flow integration setup. ([2f62151](https://github.com/StanislavBolshakov/ha-eirc/commit/2f6215165a3d02fbf0a8d8813a666ba6bf14dcd7))
+
 ## [0.5.3](https://github.com/StanislavBolshakov/ha-pes/compare/v0.5.2...v0.5.3) (2023-08-23)
 
 
