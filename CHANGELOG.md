@@ -1,3 +1,10 @@
+## [0.6.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.6.0...v0.6.1) (2025-02-09)
+
+
+### Bug Fixes
+
+* adj sensor naming ([6229b5f](https://github.com/StanislavBolshakov/ha-eirc/commit/6229b5f25b11d916c1acae2c9ad24fd0e41ad357))
+
 # [0.6.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.5.3...v0.6.0) (2025-02-09)
 
 
