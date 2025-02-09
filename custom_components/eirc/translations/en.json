@@ -1,0 +1,38 @@
+{
+  "title": "EIRC Integration",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Enter your credentials",
+        "description": "Provide your username and password to authenticate."
+      },
+      "account": {
+        "title": "Select accounts",
+        "description": "Choose which accounts you want to monitor."
+      },
+      "account_selection": {
+        "title": "Account Selection",
+        "description": "Found {account_count} account(s) for {username}. Select the accounts you wish to track.",
+        "data": {
+          "accounts": "Accounts:"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password",
+      "cannot_connect": "Unable to connect to the server",
+      "no_valid_accounts": "No valid accounts found"
+    }
+  },
+  "options": {
+    "step": {
+      "account_selection": {
+        "title": "Account Selection",
+        "description": "Select the accounts you wish to track.",
+        "data": {
+          "accounts": "Accounts:"
+        }
+      }
+    }
+  }
+}

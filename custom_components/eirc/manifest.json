@@ -1,0 +1,20 @@
+{
+  "domain": "eirc",
+  "name": "EIRC Integration",
+  "version": "0.5.3",
+  "documentation": "https://github.com/StanislavBolshakov/ha-eirc",
+  "requirements": ["aiohttp"],
+  "codeowners": ["@StanislavBolshakov"],
+  "config_flow": true,
+  "iot_class": "cloud_polling",
+  "translations": [
+    {
+      "language": "en",
+      "path": "translations/en.json"
+    },
+    {
+      "language": "ru",
+      "path": "translations/ru.json"
+    }
+  ]
+}

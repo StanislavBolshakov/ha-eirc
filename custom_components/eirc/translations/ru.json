@@ -1,0 +1,38 @@
+{
+  "title": "ЕИРЦ СПб",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Аутентификация",
+        "description": "Введите номер телефона (в формате +7...) и пароль",
+        "data": {
+          "username": "Телефон",
+          "password": "Пароль"
+        }
+      },
+      "account": {
+        "title": "Выбор аккаунтов",
+        "description": "Пожалуйста, выберите, какие учетные записи отслеживать",
+        "data": {
+          "accounts": "Аккаунты:"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password",
+      "cannot_connect": "Unable to connect to the server",
+      "no_valid_accounts": "No valid accounts found"
+    }
+  },
+  "options": {
+    "step": {
+      "account_selection": {
+        "title": "Выбор аккаунтов",
+        "description": "Пожалуйста, выберите, какие из них отслеживать",
+        "data": {
+          "accounts": "Аккаунты:"
+        }
+      }
+    }
+  }
+}
