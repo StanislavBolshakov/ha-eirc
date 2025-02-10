@@ -1,3 +1,10 @@
+# [0.7.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.6.1...v0.7.0) (2025-02-10)
+
+
+### Features
+
+* **eirc:** updated russian translation ([5911785](https://github.com/StanislavBolshakov/ha-eirc/commit/591178513cdbe093a8a9ae39bde454112b219cdb))
+
 ## [0.6.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.6.0...v0.6.1) (2025-02-09)
 
 
