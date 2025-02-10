@@ -1,5 +1,84 @@
 {
   "title": "ЕИРЦ СПб",
+  "entity": {
+    "sensor": {
+      "eirc_sensor": {
+        "state_attributes": {
+          "account_id": {
+            "name": "Идентификатор учетной записи"
+          },
+          "tenancy": {
+            "name": "Лицевой счет"
+          },
+          "service_provider": {
+            "name": "Поставщик услуги"
+          },
+          "delivery_method": {
+            "name": "Метод доставки счета",
+            "state": {
+              "ELECTRONIC": "Электронная почта",
+              "PAPER": "Бумажный"
+            }
+          },
+          "confirmed": {
+            "name": "Confirmed"
+          },
+          "auto_payment": {
+            "name": "Автоматический платеж",
+            "state": {
+              "false": "Нет",
+              "true": "Да"
+            }
+          }
+        }
+      },
+      "eirc_meter_sensor": {
+        "state_attributes": {
+          "account_id": {
+            "name": "Идентификатор учетной записи"
+          },
+          "tenancy": {
+            "name": "Лицевой счет"
+          },
+          "service_provider": {
+            "name": "Поставщик услуги"
+          },
+          "delivery_method": {
+            "name": "Метод доставки счета",
+            "state": {
+              "ELECTRONIC": "Электронная почта",
+              "PAPER": "Бумажный"
+            }
+          },
+          "confirmed": {
+            "name": "Confirmed"
+          },
+          "auto_payment": {
+            "name": "Автоматический платеж",
+            "state": {
+              "false": "Нет",
+              "true": "Да"
+            }
+          },
+          "meter_id": {
+            "name": "Идентификатор счетчика"
+          },
+          "meter_name": {
+            "name": "Название счетчика"
+          },
+          "scale_name": {
+            "name": "Название тарифа"
+          },
+          "scale_id": {
+            "name": "Идентификатор тарифа"
+          },
+          "last_update": {
+            "name": "Последнее обновление"
+          }
+        }
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
