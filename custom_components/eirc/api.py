@@ -4,12 +4,13 @@ import logging
 import asyncio
 from aiohttp import ClientSession, ClientResponseError
 from typing import Callable, Any
+from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
 MAX_RETRIES = 5
-INITIAL_BACKOFF = 2  
-BACKOFF_MULTIPLIER = 2 
+INITIAL_BACKOFF = 2
+BACKOFF_MULTIPLIER = 2
 
 class EIRCApiClient:
     def __init__(self, hass, username: str, password: str):
@@ -28,17 +29,12 @@ class EIRCApiClient:
         return await self._retry_api_call(self._perform_get_accounts)
 
     async def get_account_balance(self, account_id: int) -> float:
-        """
-        Fetch the account balance for the given account ID.
-        Returns the sum of "accrued" values for items where "checked" is True.
-        """
-
+        """Fetch the account balance for the given account ID."""
         url = f"https://ikus.pesc.ru/api/v7/accounts/{account_id}/payments/at/current/amount/discretion"
         headers = {"Authorization": f"Bearer {self._token}"}
 
         async with self._get_session().get(url, headers=headers) as response:
-            if response.status != 200:
-                response.raise_for_status()
+            response.raise_for_status()
             data = await response.json()
 
         total_balance = sum(
@@ -52,11 +48,10 @@ class EIRCApiClient:
         url = f"https://ikus.pesc.ru/api/v6/accounts/{account_id}/meters/info"
         headers = {"Authorization": f"Bearer {self._token}"}
         async with self._get_session().get(url, headers=headers) as response:
-            if response.status != 200:
-                response.raise_for_status()
+            response.raise_for_status()
             return await response.json()
 
-    async def _retry_api_call(self, api_call: Callable[[], Any]):
+    async def _retry_api_call(self, api_call: Callable[..., Any], *args, **kwargs):
         """
         Generic retry logic for API calls.
         Handles 503 errors with exponential backoff.
@@ -67,31 +62,28 @@ class EIRCApiClient:
 
         while retries < MAX_RETRIES:
             try:
-                _LOGGER.debug("Attempting API call (Attempt %d)", retries + 1)
-                result = await api_call()
+                _LOGGER.debug(f"Attempting API call (Attempt {retries + 1})")
+                result = await api_call(*args, **kwargs)
                 _LOGGER.debug("API call succeeded")
                 return result
             except ClientResponseError as err:
-                if err.status == 503:  
+                if err.status == 503:
                     _LOGGER.warning(
-                        "Received 503 error during API call. Retrying in %d seconds (Attempt %d/%d)",
-                        backoff_time,
-                        retries + 1,
-                        MAX_RETRIES,
+                        f"Received 503 error during API call. Retrying in {backoff_time} seconds (Attempt {retries + 1}/{MAX_RETRIES})"
                     )
                     await asyncio.sleep(backoff_time)
                     retries += 1
-                    backoff_time *= BACKOFF_MULTIPLIER  
-                elif err.status == 401: 
+                    backoff_time *= BACKOFF_MULTIPLIER
+                elif err.status == 401:
                     _LOGGER.warning(
                         "Received 401 error during API call. Re-authenticating..."
                     )
-                    await self.authenticate()  
+                    await self.authenticate()
                 else:
-                    _LOGGER.error("Unexpected HTTP error during API call: %s", err)
+                    _LOGGER.error(f"Unexpected HTTP error during API call: {err}")
                     raise
             except Exception as err:
-                _LOGGER.error("Unexpected error during API call: %s", err)
+                _LOGGER.error(f"Unexpected error during API call: {err}")
                 raise
 
         _LOGGER.error("Max retries reached during API call. Giving up.")
@@ -100,14 +92,9 @@ class EIRCApiClient:
     async def _perform_authentication(self):
         """Perform the actual authentication request."""
         url = "https://ikus.pesc.ru/api/v8/users/auth"
-        payload = {
-            "type": "PHONE", 
-            "login": self._username,
-            "password": self._password,
-        }
+        payload = {"type": "PHONE", "login": self._username, "password": self._password}
         async with self._get_session().post(url, json=payload) as response:
-            if response.status != 200:
-                response.raise_for_status()
+            response.raise_for_status()
             data = await response.json()
             self._token = data["auth"]
             _LOGGER.debug("Authentication successful")
@@ -117,8 +104,7 @@ class EIRCApiClient:
         url = "https://ikus.pesc.ru/api/v8/accounts"
         headers = {"Authorization": f"Bearer {self._token}"}
         async with self._get_session().get(url, headers=headers) as response:
-            if response.status != 200:
-                response.raise_for_status()
+            response.raise_for_status()
             return await response.json()
 
     def _get_session(self):
@@ -126,3 +112,60 @@ class EIRCApiClient:
         if self._session is None:
             self._session = self.hass.helpers.aiohttp_client.async_get_clientsession()
         return self._session
+
+    async def send_meter_reading(
+        self, account_id: int, meter_registration: str, readings: list[dict]
+    ) -> bool:
+        """Send meter readings with validation and proper error handling."""
+        url = f"https://ikus.pesc.ru/api/v8/accounts/{account_id}/meters/{meter_registration}/reading"
+        headers = {"Authorization": f"Bearer {self._token}"}
+        _LOGGER.debug(f"Sending readings to {url} with payload: {readings}")
+
+        try:
+            return await self._retry_api_call(
+                lambda: self._perform_send_reading(url, headers, readings)
+            )
+        except ClientResponseError as err:
+            raise HomeAssistantError(f"Failed to send meter readings: {err.message}")
+
+    async def _perform_send_reading(
+        self, url: str, headers: dict, readings: list[dict]
+    ) -> bool:
+        """Perform the actual send reading request and handle the response."""
+        try:
+            async with self._get_session().post(
+                url, json=readings, headers=headers
+            ) as resp:
+                if resp.status != 200:
+                    if 500 <= resp.status < 600:
+                        try:
+                            error_data = await resp.json()
+                            error_message = error_data.get(
+                                "message", "No message provided"
+                            )
+                        except Exception:
+                            error_message = "Failed to parse error response"
+                        _LOGGER.error(
+                            f"Failed to send readings: HTTP {resp.status}, Error: {error_message}"
+                        )
+                    else:
+                        error_message = f"HTTP {resp.status} error occurred"
+                        _LOGGER.error(f"Failed to send readings: {error_message}")
+                    raise ClientResponseError(
+                        resp.request_info,
+                        resp.history,
+                        status=resp.status,
+                        message=error_message,
+                    )
+
+                result = await resp.text()
+
+                if result in ["true", "false"]:
+                    _LOGGER.debug("Meter reading successfully sent")
+                    return True
+                else:
+                    _LOGGER.error("Meter reading failed: Expected True response")
+                    return False
+        except Exception as e:
+            _LOGGER.error(f"Error during meter reading post request: {str(e)}")
+            raise

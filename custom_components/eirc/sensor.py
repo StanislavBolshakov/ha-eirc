@@ -16,9 +16,7 @@ from homeassistant.helpers.translation import async_get_translations
 
 _LOGGER = logging.getLogger(__name__)
 
-
 SCAN_INTERVAL = timedelta(minutes=5)
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -204,6 +202,7 @@ class EIRCMeterSensor(SensorEntity):
             "manufacturer": "ЕИРЦ Санкт-Петербург",
         }
         self._attr_native_unit_of_measurement = indication_data["unit"]
+        self._attr_device_class = "meter"
         _LOGGER.debug(
             "Initialized meter sensor for account: %s, meter: %s, scale: %s",
             account_data["tenancy"]["register"],
@@ -225,7 +224,12 @@ class EIRCMeterSensor(SensorEntity):
             "meter_name": self._meter_data["name"],
             "scale_name": self._indication_data["scaleName"],
             "scale_id": self._indication_data["meterScaleId"],
+            "last_update": self._indication_data["previousReadingDate"],
         }
+
+    @property
+    def device_class(self):
+        return "meter"
 
     async def async_update(self) -> None:
         """Update sensor data."""

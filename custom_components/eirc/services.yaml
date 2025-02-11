@@ -1,0 +1,24 @@
+send_meter_reading:
+  name: Send meter readings
+  description: Send meter readings to EIRC
+  fields:
+    entity_id:
+      description: The entity ID of the meter
+      required: true
+      example: sensor.eirc_meter_123
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            integration: eirc
+            device_class: meter
+    readings:
+      description: List of meter readings to send
+      required: true
+      selector:
+        object:
+      example:
+        - scale_id: 2
+          value: 12845.0
+        - scale_id: 3
+          value: 4012.5
