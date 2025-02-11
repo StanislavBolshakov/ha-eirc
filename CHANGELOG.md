@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.7.0...v0.8.0) (2025-02-11)
+
+
+### Features
+
+* **eirc:** Update Meter Readings service added ([e8237c7](https://github.com/StanislavBolshakov/ha-eirc/commit/e8237c795f4dcbee3dc3ac3f924d4a7e09f2d878))
+
 # [0.7.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.6.1...v0.7.0) (2025-02-10)
 
 
