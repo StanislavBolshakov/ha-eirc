@@ -98,8 +98,8 @@
       }
     },
     "error": {
-      "invalid_auth": "Invalid username or password",
-      "cannot_connect": "Unable to connect to the server",
+      "invalid_auth": "Неправильное имя пользователя или пароль",
+      "cannot_connect": "Не могу подключиться к серверу ЕИРЦ",
       "no_valid_accounts": "No valid accounts found"
     }
   },
