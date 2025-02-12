@@ -1,14 +1,19 @@
 """The EIRC integration."""
 
 from __future__ import annotations
+
+import logging
+
+import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
-import voluptuous as vol
-from .const import DOMAIN, SERVICE_SEND_METER_READING, ATTR_ENTITY_ID, ATTR_READINGS
+from homeassistant.helpers import config_validation as cv
+import homeassistant.helpers.entity_registry as er
+
 from .api import EIRCApiClient
-import logging
+from .const import ATTR_ENTITY_ID, ATTR_READINGS, DOMAIN, SERVICE_SEND_METER_READING
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,11 +39,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up from config entry."""
     hass.data.setdefault(DOMAIN, {})
     client = EIRCApiClient(hass, entry.data["username"], entry.data["password"])
-    hass.data[DOMAIN][entry.entry_id] = client
 
     async def handle_send_meter_reading(call: ServiceCall):
-        _LOGGER.debug("Service call received: %s", call.data)
         """Handle the service call to send meter readings."""
+        _LOGGER.debug("Service call received: %s", call.data)
         await async_send_meter_reading(hass, call)
 
     _LOGGER.debug("Registering services")
@@ -55,7 +59,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as service_err:
         _LOGGER.error(f"Service registration failed with: {service_err}")
         raise
-    return await hass.config_entries.async_forward_entry_setup(entry, "sensor")
+
+    try:
+        hass.data[DOMAIN][entry.entry_id] = client
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    except Exception as e:
+        _LOGGER.error("Error setting up entry: %s", e)
+        return False
+    return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -82,7 +93,7 @@ async def async_send_meter_reading(hass: HomeAssistant, call: ServiceCall):
         raise HomeAssistantError(
             f"Missing account_id or meter_id for entity {entity_id}"
         )
-    entity_registry = hass.helpers.entity_registry.async_get()
+    entity_registry = er.async_get(hass)
     entity_entry = entity_registry.async_get(entity_id)
     if not entity_entry:
         raise HomeAssistantError(f"Entity {entity_id} not found in entity registry")
