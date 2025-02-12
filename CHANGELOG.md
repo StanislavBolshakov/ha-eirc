@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.8.0...v0.9.0) (2025-02-12)
+
+
+### Features
+
+* **EIRC:** fixed Home Assistant deprecation warnings ([cd57aa3](https://github.com/StanislavBolshakov/ha-eirc/commit/cd57aa3edbc81fdf15532e306618b398537c479e))
+
 # [0.8.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.7.0...v0.8.0) (2025-02-11)
 
 
