@@ -1,3 +1,11 @@
+## [0.9.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.9.0...v0.9.1) (2025-02-12)
+
+
+### Bug Fixes
+
+* **eirc:** config flow deprecation warning fixed, Russian translation updated ([db8c32e](https://github.com/StanislavBolshakov/ha-eirc/commit/db8c32e40814d6bfc6468f6bba7a2f38530007e3))
+* **eirc:** config flow deprecation warning fixed, Russian translation updated ([35f742b](https://github.com/StanislavBolshakov/ha-eirc/commit/35f742b786552b5dd814dbd2fc5f92cf762b8287))
+
 # [0.9.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.8.0...v0.9.0) (2025-02-12)
 
 
