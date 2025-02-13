@@ -1,3 +1,10 @@
+## [0.9.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.9.1...v0.9.2) (2025-02-13)
+
+
+### Bug Fixes
+
+* **EIRC API:** 500 errors are properly handled ([72ce055](https://github.com/StanislavBolshakov/ha-eirc/commit/72ce055c709d92ab592ea8e1932d88431c3d2f28))
+
 ## [0.9.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.9.0...v0.9.1) (2025-02-12)
 
 
