@@ -195,7 +195,7 @@ class EIRCApiClient:
                 _LOGGER.debug("API call to %s succeeded", api_endpoint)
                 return result
             except ClientResponseError as err:
-                if err.status == 503:
+                if err.status in [500,503]:
                     _LOGGER.warning(
                         "Received 503 error during API call to %s. Retrying in %d seconds (Attempt %d/%d)",
                         api_endpoint,
