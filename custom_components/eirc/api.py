@@ -16,7 +16,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 _LOGGER = logging.getLogger(__name__)
 
 MAX_RETRIES = 5
-INITIAL_BACKOFF = 2
+INITIAL_BACKOFF = 4
 BACKOFF_MULTIPLIER = 2
 
 
@@ -30,15 +30,6 @@ class EIRCApiClient:
     This class provides methods for authenticating with the EIRC API, fetching accounts,
     retrieving account balances, and sending meter readings. It handles retries, exponential
     backoff, and caching of data.
-
-    Attributes:
-        hass (HomeAssistant): The Home Assistant instance to obtain the session.
-        _username (str): The username for authentication.
-        _password (str): The password for authentication.
-        _session (aiohttp.ClientSession): The session for making API requests.
-        _token (str): The authentication token used for API requests.
-        _cache (dict): A cache for storing API responses.
-        cache_ttl (int): Time-to-live (TTL) for cached data in seconds (default: 300).
 
     """
 
@@ -195,7 +186,7 @@ class EIRCApiClient:
                 _LOGGER.debug("API call to %s succeeded", api_endpoint)
                 return result
             except ClientResponseError as err:
-                if err.status in [500,503]:
+                if err.status in [429,500,503]:
                     _LOGGER.warning(
                         "Received 503 error during API call to %s. Retrying in %d seconds (Attempt %d/%d)",
                         api_endpoint,

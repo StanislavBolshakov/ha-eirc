@@ -16,7 +16,7 @@ from homeassistant.helpers.translation import async_get_translations
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL = timedelta(minutes=5)
+SCAN_INTERVAL = timedelta(minutes=10)
 
 async def async_setup_entry(
     hass: HomeAssistant,
