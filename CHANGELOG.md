@@ -1,3 +1,10 @@
+## [0.9.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.9.2...v0.9.3) (2025-02-15)
+
+
+### Bug Fixes
+
+* **EIRC:** 429 error handling, sensor update time and API backoff timer adjustments ([23480f5](https://github.com/StanislavBolshakov/ha-eirc/commit/23480f5a257334dadec648586142785a3f879733))
+
 ## [0.9.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.9.1...v0.9.2) (2025-02-13)
 
 
