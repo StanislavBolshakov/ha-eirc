@@ -188,7 +188,8 @@ class EIRCApiClient:
             except ClientResponseError as err:
                 if err.status in [429,500,503]:
                     _LOGGER.warning(
-                        "Received 503 error during API call to %s. Retrying in %d seconds (Attempt %d/%d)",
+                        "Received %d error during API call to %s. Retrying in %d seconds (Attempt %d/%d)",
+                        err.status,
                         api_endpoint,
                         backoff_time,
                         retries + 1,
