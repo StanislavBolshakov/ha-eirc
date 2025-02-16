@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.9.3...v0.10.0) (2025-02-16)
+
+
+### Features
+
+* **EIRC:** impl DataUpdateCoordinator pattern to reduce API spam and 429 rate ([56836f7](https://github.com/StanislavBolshakov/ha-eirc/commit/56836f73f8b6734b3f8e987137ce33e574627837))
+
 ## [0.9.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.9.2...v0.9.3) (2025-02-15)
 
 
