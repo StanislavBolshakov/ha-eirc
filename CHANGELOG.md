@@ -1,3 +1,10 @@
+## [0.10.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.10.1...v0.10.2) (2025-02-19)
+
+
+### Bug Fixes
+
+* **EIRC:** EIRCSensor correctly fetch Update Coordinator data ([217100b](https://github.com/StanislavBolshakov/ha-eirc/commit/217100b439ee914f018921089e028614716d6cf7))
+
 ## [0.10.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.10.0...v0.10.1) (2025-02-19)
 
 
