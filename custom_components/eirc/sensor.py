@@ -122,6 +122,7 @@ class EIRCDataUpdateCoordinator(DataUpdateCoordinator):
                 account["balance"] = await self._client.get_account_balance(
                     account["id"]
                 )
+            _LOGGER.debug("Updated data: %s", accounts)
             return {
                 acc["tenancy"]["register"]: acc for acc in accounts if acc["confirmed"]
             }
@@ -213,21 +214,50 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Return the meter reading value."""
-        return self._indication_data.get("previousReading")
+        account_data = self.coordinator.data.get(
+            self._account_data["tenancy"]["register"]
+        )
+        if not account_data:
+            return None
+        meters = account_data.get("meters", [])
+        for meter in meters:
+            if meter["id"]["registration"] == self._meter_data["id"]["registration"]:
+                for indication in meter.get("indications", []):
+                    if (
+                        indication["meterScaleId"]
+                        == self._indication_data["meterScaleId"]
+                    ):
+                        return indication.get("previousReading")
+        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        return {
-            "account_id": self._account_data["id"],
-            "tenancy": self._account_data["tenancy"]["register"],
-            "service_provider": self._account_data["service"]["providerCode"],
-            "delivery_method": self._account_data["delivery"],
-            "confirmed": self._account_data["confirmed"],
-            "auto_payment": self._account_data["autoPaymentOn"],
-            "meter_id": self._meter_data["id"]["registration"],
-            "meter_name": self._meter_data["name"],
-            "scale_name": self._indication_data["scaleName"],
-            "scale_id": self._indication_data["meterScaleId"],
-            "last_update": self._indication_data["previousReadingDate"],
-        }
+        account_data = self.coordinator.data.get(
+            self._account_data["tenancy"]["register"]
+        )
+        if not account_data:
+            return {}
+
+        meters = account_data.get("meters", [])
+        for meter in meters:
+            if meter["id"]["registration"] == self._meter_data["id"]["registration"]:
+                for indication in meter.get("indications", []):
+                    if (
+                        indication["meterScaleId"]
+                        == self._indication_data["meterScaleId"]
+                    ):
+                        return {
+                            "account_id": account_data["id"],
+                            "tenancy": account_data["tenancy"]["register"],
+                            "service_provider": account_data["service"]["providerCode"],
+                            "delivery_method": account_data["delivery"],
+                            "confirmed": account_data["confirmed"],
+                            "auto_payment": account_data["autoPaymentOn"],
+                            "meter_id": meter["id"]["registration"],
+                            "meter_name": meter["name"],
+                            "scale_name": indication["scaleName"],
+                            "scale_id": indication["meterScaleId"],
+                            "last_update": indication["previousReadingDate"],
+                        }
+        return {}
