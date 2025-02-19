@@ -16,7 +16,7 @@ from .const import DOMAIN
 from .api import EIRCApiClient
 
 _LOGGER = logging.getLogger(__name__)
-SCAN_INTERVAL = timedelta(minutes=15)
+SCAN_INTERVAL = timedelta(minutes=2)
 
 EIRC_PREFIX = "eirc_"
 
@@ -147,28 +147,43 @@ class EIRCSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = account_data.get("alias", "Unknown Account")
         self._attr_device_info = {
             "identifiers": {(DOMAIN, account_data["tenancy"]["register"])},
-            "name": account_data["alias"],
+            "name": account_data.get("alias", "Unknown Account"),
             "manufacturer": "ЕИРЦ Санкт-Петербург",
         }
 
     @property
     def native_value(self):
         """Return the current account balance."""
-        return self.coordinator.data.get(
+        account_data = self.coordinator.data.get(
             self._account_data["tenancy"]["register"], {}
-        ).get("balance")
+        )
+        return account_data.get("balance")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         return {
-            "account_id": self._account_data["id"],
-            "tenancy": self._account_data["tenancy"]["register"],
-            "service_provider": self._account_data["service"]["providerCode"],
-            "delivery_method": self._account_data["delivery"],
-            "confirmed": self._account_data["confirmed"],
-            "auto_payment": self._account_data["autoPaymentOn"],
+            "account_id": self._account_data.get("id"),
+            "tenancy": self._account_data.get("tenancy", {}).get("register"),
+            "service_provider": self._account_data.get("service", {}).get(
+                "providerCode"
+            ),
+            "delivery_method": self._account_data.get("delivery"),
+            "confirmed": self._account_data.get("confirmed"),
+            "auto_payment": self._account_data.get("autoPaymentOn"),
         }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._account_data = self.coordinator.data.get(
+            self._account_data["tenancy"]["register"], {}
+        )
+        _LOGGER.debug("Updated account data: %s", self._account_data)
+        self.async_write_ha_state()
 
 
 class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
@@ -215,10 +230,8 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         """Return the meter reading value."""
         account_data = self.coordinator.data.get(
-            self._account_data["tenancy"]["register"]
+            self._account_data["tenancy"]["register"], {}
         )
-        if not account_data:
-            return None
         meters = account_data.get("meters", [])
         for meter in meters:
             if meter["id"]["registration"] == self._meter_data["id"]["registration"]:
@@ -233,31 +246,47 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
+        return {
+            "account_id": self._account_data.get("id"),
+            "tenancy": self._account_data.get("tenancy", {}).get("register"),
+            "service_provider": self._account_data.get("service", {}).get(
+                "providerCode"
+            ),
+            "delivery_method": self._account_data.get("delivery"),
+            "confirmed": self._account_data.get("confirmed"),
+            "auto_payment": self._account_data.get("autoPaymentOn"),
+            "meter_id": self._meter_data.get("id", {}).get("registration"),
+            "meter_name": self._meter_data.get("name"),
+            "scale_name": self._indication_data.get("scaleName"),
+            "scale_id": self._indication_data.get("meterScaleId"),
+            "last_update": self._indication_data.get("previousReadingDate"),
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         account_data = self.coordinator.data.get(
-            self._account_data["tenancy"]["register"]
+            self._account_data["tenancy"]["register"], {}
         )
         if not account_data:
-            return {}
+            return
+
+        self._account_data = account_data
 
         meters = account_data.get("meters", [])
         for meter in meters:
             if meter["id"]["registration"] == self._meter_data["id"]["registration"]:
+                self._meter_data = meter
                 for indication in meter.get("indications", []):
                     if (
                         indication["meterScaleId"]
                         == self._indication_data["meterScaleId"]
                     ):
-                        return {
-                            "account_id": account_data["id"],
-                            "tenancy": account_data["tenancy"]["register"],
-                            "service_provider": account_data["service"]["providerCode"],
-                            "delivery_method": account_data["delivery"],
-                            "confirmed": account_data["confirmed"],
-                            "auto_payment": account_data["autoPaymentOn"],
-                            "meter_id": meter["id"]["registration"],
-                            "meter_name": meter["name"],
-                            "scale_name": indication["scaleName"],
-                            "scale_id": indication["meterScaleId"],
-                            "last_update": indication["previousReadingDate"],
-                        }
-        return {}
+                        self._indication_data = indication
+                        break
+                break
+        _LOGGER.debug("Updated sensor data: %s", self._account_data)
+        self.async_write_ha_state()
