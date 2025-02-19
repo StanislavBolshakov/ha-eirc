@@ -1,3 +1,10 @@
+## [0.10.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.10.2...v0.10.3) (2025-02-19)
+
+
+### Bug Fixes
+
+* **EIRC:** reverted scan interval to 15 minutes ([cc6f5ca](https://github.com/StanislavBolshakov/ha-eirc/commit/cc6f5ca7c3577ae2a0f74bb36c66ab7a5c58d8b3))
+
 ## [0.10.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.10.1...v0.10.2) (2025-02-19)
 
 
