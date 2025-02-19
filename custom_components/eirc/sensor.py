@@ -16,7 +16,7 @@ from .const import DOMAIN
 from .api import EIRCApiClient
 
 _LOGGER = logging.getLogger(__name__)
-SCAN_INTERVAL = timedelta(minutes=2)
+SCAN_INTERVAL = timedelta(minutes=15)
 
 EIRC_PREFIX = "eirc_"
 
