@@ -9,6 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     CoordinatorEntity,
+    UpdateFailed
 )
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
@@ -16,7 +17,7 @@ from .const import DOMAIN
 from .api import EIRCApiClient
 
 _LOGGER = logging.getLogger(__name__)
-SCAN_INTERVAL = timedelta(minutes=15)
+SCAN_INTERVAL = timedelta(minutes=10)
 
 EIRC_PREFIX = "eirc_"
 
@@ -133,7 +134,7 @@ class EIRCDataUpdateCoordinator(DataUpdateCoordinator):
             }
         except Exception as err:
             _LOGGER.error("Error fetching data: %s", err)
-            raise
+            raise UpdateFailed(f"Fetching data failed: {err}")
 
 
 class EIRCSensor(CoordinatorEntity, SensorEntity):
