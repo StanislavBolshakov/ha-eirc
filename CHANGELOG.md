@@ -1,3 +1,10 @@
+## [0.11.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.11.0...v0.11.1) (2025-09-16)
+
+
+### Bug Fixes
+
+* **EIRC:** корректная инициализация клиента EIRC в сервисе ([4384f32](https://github.com/StanislavBolshakov/ha-eirc/commit/4384f32a95366df103b4ff4181b6bccd8207109a))
+
 # [0.11.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.10.3...v0.11.0) (2025-09-16)
 
 
