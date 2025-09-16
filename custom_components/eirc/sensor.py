@@ -26,15 +26,21 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up sensors from config entry."""
-    client = hass.data[DOMAIN][entry.entry_id]
+    """Set up sensors from config entry with stored auth info."""
+    client = EIRCApiClient(
+        hass,
+        username=entry.data["username"],
+        password=entry.data["password"],
+        session_cookie=entry.data["session_cookie"],
+        token_auth=entry.data["token_auth"],
+        token_verify=entry.data["token_verify"],
+    )
     selected_tenancies = entry.data.get("selected_accounts", [])
     coordinator = EIRCDataUpdateCoordinator(hass, client, SCAN_INTERVAL)
     await coordinator.async_config_entry_first_refresh()
 
     entity_registry = async_get_entity_registry(hass)
     device_registry = async_get_device_registry(hass)
-
     active_tenancies = {acc["tenancy"]["register"] for acc in coordinator.data.values()}
 
     _cleanup_orphaned_devices(device_registry, active_tenancies)
@@ -115,7 +121,6 @@ class EIRCDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from API."""
         try:
-            await self._client.authenticate()
             accounts = await self._client.get_accounts()
             for account in accounts:
                 account["meters"] = await self._client.get_meters_info(account["id"])

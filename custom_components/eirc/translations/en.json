@@ -6,6 +6,13 @@
         "title": "Enter your credentials",
         "description": "Provide your username and password to authenticate."
       },
+      "2fa": {
+        "title": "Two-Factor Authentication",
+        "description": "A verification code was sent to the email address associated with {username}. Please enter it below to continue",
+        "data": {
+          "code": "Verification Code"
+        }
+      },
       "account": {
         "title": "Select accounts",
         "description": "Choose which accounts you want to monitor."
@@ -21,7 +28,8 @@
     "error": {
       "invalid_auth": "Invalid username or password",
       "cannot_connect": "Unable to connect to the server",
-      "no_valid_accounts": "No valid accounts found"
+      "no_valid_accounts": "No valid accounts found",
+      "invalid_code": "The code you entered is incorrect. Please try again"
     }
   },
   "options": {
