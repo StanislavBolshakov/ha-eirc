@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.10.3...v0.11.0) (2025-09-16)
+
+
+### Features
+
+* **EIRC:** добавлена поддержка 2FA в ЛК ЕИРЦ ([04c2828](https://github.com/StanislavBolshakov/ha-eirc/commit/04c282865823122d2ce32eadeb471520d8162bec))
+
 ## [0.10.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.10.2...v0.10.3) (2025-02-19)
 
 
