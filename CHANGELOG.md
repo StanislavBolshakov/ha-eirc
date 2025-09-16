@@ -1,3 +1,10 @@
+## [0.11.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.11.1...v0.11.2) (2025-09-16)
+
+
+### Bug Fixes
+
+* **EIRC:** добавлена логика API retry для 400 ошибок ([95ae34a](https://github.com/StanislavBolshakov/ha-eirc/commit/95ae34ae504f26f232de55fa6b82bd7d464b480c))
+
 ## [0.11.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.11.0...v0.11.1) (2025-09-16)
 
 
