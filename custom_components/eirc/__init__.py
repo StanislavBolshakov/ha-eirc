@@ -38,7 +38,14 @@ SEND_METER_READING_SCHEMA = vol.Schema(
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up from config entry."""
     hass.data.setdefault(DOMAIN, {})
-    client = EIRCApiClient(hass, entry.data["username"], entry.data["password"])
+    client = EIRCApiClient(
+        hass,
+        username=entry.data["username"],
+        password=entry.data["password"],
+        session_cookie=entry.data.get("session_cookie"),
+        token_auth=entry.data.get("token_auth"),
+        token_verify=entry.data.get("token_verify"),
+    )
 
     async def handle_send_meter_reading(call: ServiceCall):
         """Handle the service call to send meter readings."""
