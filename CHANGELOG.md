@@ -1,3 +1,10 @@
+## [0.11.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.11.2...v0.11.3) (2025-09-20)
+
+
+### Bug Fixes
+
+* **EIRC:** сервис отправления показаний теперь корректно обновляет данные сенсора после отправки ([db77da2](https://github.com/StanislavBolshakov/ha-eirc/commit/db77da226ca9d95b65a2069f83cf96ddde264496))
+
 ## [0.11.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.11.1...v0.11.2) (2025-09-16)
 
 
