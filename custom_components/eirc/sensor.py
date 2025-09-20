@@ -39,7 +39,10 @@ async def async_setup_entry(
     selected_tenancies = entry.data.get("selected_accounts", [])
     coordinator = EIRCDataUpdateCoordinator(hass, client, SCAN_INTERVAL)
     await coordinator.async_config_entry_first_refresh()
-
+    hass.data[DOMAIN][entry.entry_id] = {
+        "client": client,
+        "coordinator": coordinator,
+    }
     entity_registry = async_get_entity_registry(hass)
     device_registry = async_get_device_registry(hass)
     active_tenancies = {acc["tenancy"]["register"] for acc in coordinator.data.values()}
