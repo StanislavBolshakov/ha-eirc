@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
-from .const import DOMAIN
+from .const import DOMAIN, CONF_PROXY
 from .api import EIRCApiClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +28,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensors from config entry with stored auth info."""
+    proxy = (entry.options.get(CONF_PROXY) or entry.data.get(CONF_PROXY) or "").strip() or None
+    if proxy:
+        _LOGGER.debug("EIRC sensor setup using proxy (masked): %s", "***@"+proxy.split("@")[-1] if "@" in proxy else proxy)
+
     client = EIRCApiClient(
         hass,
         username=entry.data["username"],
@@ -35,7 +39,9 @@ async def async_setup_entry(
         session_cookie=entry.data["session_cookie"],
         token_auth=entry.data["token_auth"],
         token_verify=entry.data["token_verify"],
+        proxy=proxy,
     )
+
     selected_tenancies = entry.data.get("selected_accounts", [])
     coordinator = EIRCDataUpdateCoordinator(hass, client, SCAN_INTERVAL)
     await coordinator.async_config_entry_first_refresh()
