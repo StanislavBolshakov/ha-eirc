@@ -12,8 +12,14 @@ from homeassistant.helpers import config_validation as cv
 import homeassistant.helpers.entity_registry as er
 
 from .api import EIRCApiClient
-from .const import ATTR_ENTITY_ID, ATTR_READINGS, DOMAIN, SERVICE_SEND_METER_READING
-from .sensor import EIRCDataUpdateCoordinator 
+from .const import (
+    ATTR_ENTITY_ID,
+    ATTR_READINGS,
+    DOMAIN,
+    SERVICE_SEND_METER_READING,
+    CONF_PROXY,
+)
+from .sensor import EIRCDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +45,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up from config entry."""
     hass.data.setdefault(DOMAIN, {})
 
+    proxy = (entry.options.get(CONF_PROXY) or entry.data.get(CONF_PROXY) or "").strip() or None
+
     client = EIRCApiClient(
         hass,
         username=entry.data["username"],
@@ -46,6 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session_cookie=entry.data.get("session_cookie"),
         token_auth=entry.data.get("token_auth"),
         token_verify=entry.data.get("token_verify"),
+        proxy=proxy,
     )
 
     async def handle_send_meter_reading(call: ServiceCall):
@@ -70,6 +79,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         hass.data[DOMAIN][entry.entry_id] = {"client": client, "coordinator": None}
+        entry.async_on_unload(entry.add_update_listener(_update_listener))
         await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     except Exception as e:
         _LOGGER.error("Error setting up entry: %s", e)
@@ -174,3 +184,7 @@ async def async_send_meter_reading(hass: HomeAssistant, call: ServiceCall):
     except Exception as err:
         _LOGGER.error("Error sending meter readings: %s", err)
         raise HomeAssistantError(f"Failed to send meter readings: {err}")
+
+async def _update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when options (e.g., proxy) change."""
+    await hass.config_entries.async_reload(entry.entry_id)

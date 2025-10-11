@@ -63,6 +63,7 @@ class EIRCApiClient:
         session_cookie: str | None = None,
         token_auth: str | None = None,
         token_verify: str | None = None,
+        proxy: str | None = None,
     ) -> None:
         self.hass = hass
         self._username = username
@@ -71,6 +72,7 @@ class EIRCApiClient:
         self._token_auth = token_auth
         self._token_verify = token_verify
         self._session = None
+        self._proxy = proxy  # строка URL прокси или None
 
     async def authenticate(self):
         """Authenticate with the API and store session/auth info."""
@@ -123,12 +125,11 @@ class EIRCApiClient:
             self._perform_get_meters_info, account_id, url=url
         )
 
-    async def _fetch_session_cookie(self) -> None:
+    async def _fetch_session_cookie(self) -> Optional[str]:
         """Fetch and store cookies."""
-
         _LOGGER.debug("Setting session cookie via GET request to: %s", self.COOKIE_URL)
 
-        async with self._get_session().get(self.COOKIE_URL) as resp:
+        async with self._get_session().get(self.COOKIE_URL, proxy=self._proxy) as resp:
             _LOGGER.debug("Cookie endpoint response status: %d", resp.status)
             if not resp.cookies:
                 raise MissingSessionCookieError(
@@ -142,11 +143,10 @@ class EIRCApiClient:
 
     def _craft_headers(self) -> Dict[str, str]:
         """Generate headers with session cookie, Bearer and verification tokens."""
-
         if not self._session_cookie:
             raise MissingSessionCookieError("Session cookie is missing")
 
-        headers = {}
+        headers: Dict[str, str] = {}
         headers["Cookie"] = f"session-cookie={self._session_cookie}"
         headers["Content-Type"] = "application/json"
 
@@ -162,7 +162,9 @@ class EIRCApiClient:
         """Trigger sending of the verification email for 2FA."""
         url = self.EMAIL_CHECK_URL.format(transaction_id=transaction_id)
         headers = self._craft_headers()
-        async with self._get_session().post(url, headers=headers) as resp:
+        async with self._get_session().post(
+            url, headers=headers, proxy=self._proxy
+        ) as resp:
             resp.raise_for_status()
         _LOGGER.debug("2FA verification email sent")
 
@@ -172,7 +174,9 @@ class EIRCApiClient:
         headers = self._craft_headers()
         payload = {"code": code}
 
-        async with self._get_session().post(url, json=payload, headers=headers) as resp:
+        async with self._get_session().post(
+            url, json=payload, headers=headers, proxy=self._proxy
+        ) as resp:
             resp.raise_for_status()
             data = await resp.json()
 
@@ -253,7 +257,7 @@ class EIRCApiClient:
         headers = self._craft_headers()
 
         async with self._get_session().post(
-            self.AUTH_URL, json=payload, headers=headers
+            self.AUTH_URL, json=payload, headers=headers, proxy=self._proxy
         ) as response:
             if response.status == 424:
                 data = await response.json()
@@ -287,7 +291,7 @@ class EIRCApiClient:
         """Perform the actual accounts fetch request."""
         headers = self._craft_headers()
         async with self._get_session().get(
-            self.ACCOUNTS_URL, headers=headers
+            self.ACCOUNTS_URL, headers=headers, proxy=self._proxy
         ) as response:
             response.raise_for_status()
             return await response.json()
@@ -296,7 +300,9 @@ class EIRCApiClient:
         """Perform the actual balance fetch request."""
         headers = self._craft_headers()
         async with self._get_session().get(
-            self.ACCOUNT_BALANCE_URL.format(account_id=account_id), headers=headers
+            self.ACCOUNT_BALANCE_URL.format(account_id=account_id),
+            headers=headers,
+            proxy=self._proxy,
         ) as response:
             response.raise_for_status()
             return await response.json()
@@ -305,7 +311,9 @@ class EIRCApiClient:
         """Perform the actual meters info fetch request."""
         headers = self._craft_headers()
         async with self._get_session().get(
-            self.METERS_INFO_URL.format(account_id=account_id), headers=headers
+            self.METERS_INFO_URL.format(account_id=account_id),
+            headers=headers,
+            proxy=self._proxy,
         ) as response:
             response.raise_for_status()
             return await response.json()
@@ -341,7 +349,7 @@ class EIRCApiClient:
         """Perform the actual send reading request and handle the response."""
         try:
             async with self._get_session().post(
-                url, json=readings, headers=headers
+                url, json=readings, headers=headers, proxy=self._proxy
             ) as resp:
                 if resp.status != 200:
                     if 500 <= resp.status < 600:

@@ -11,7 +11,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 
 from .api import EIRCApiClient, TwoFactorAuthRequired
-from .const import DOMAIN
+from .const import DOMAIN, CONF_PROXY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ class EIRCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the configuration flow."""
         self._username = None
         self._password = None
+        self._proxy: str | None = None
         self._accounts: list[dict] = []
         self._selected_accounts: list[str] = []
         self._client: EIRCApiClient | None = None
@@ -39,9 +40,12 @@ class EIRCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._username = user_input[USERNAME]
             self._password = user_input[PASSWORD]
+            self._proxy = (user_input.get(CONF_PROXY) or "").strip() or None
             _LOGGER.debug("Attempting authentication for user: %s", self._username)
 
-            self._client = EIRCApiClient(self.hass, self._username, self._password)
+            self._client = EIRCApiClient(
+                self.hass, self._username, self._password, proxy=self._proxy
+            )
 
             try:
                 await self._client.authenticate()
@@ -178,7 +182,7 @@ class EIRCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     SELECTED_ACCOUNTS: self._selected_accounts,
                     **getattr(self, "_auth_entry_data", {}),
                 },
-                options={},
+                options={CONF_PROXY: (self._proxy or "")},
             )
         account_options = {
             acc["tenancy"]["register"]: f"{acc['alias']} ({acc['tenancy']['register']})"
@@ -226,7 +230,13 @@ class EIRCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return EIRCOptionsFlowHandler(config_entry)
 
     def _get_user_schema(self):
-        return vol.Schema({vol.Required(USERNAME): str, vol.Required(PASSWORD): str})
+        return vol.Schema(
+            {
+                vol.Required(USERNAME): str,
+                vol.Required(PASSWORD): str,
+                vol.Optional(CONF_PROXY): str,
+            }
+        )
 
 class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for the integration."""
@@ -236,6 +246,11 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
         self.entry_id = config_entry.entry_id
         self._accounts = []
         self._selected_accounts = config_entry.data.get(SELECTED_ACCOUNTS, [])
+        self._current_proxy = (
+            config_entry.options.get(CONF_PROXY)
+            or config_entry.data.get(CONF_PROXY)
+            or ""
+        )
 
     async def async_step_init(self, user_input=None):
         """Initialize options flow and fetch accounts."""
@@ -248,6 +263,7 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
                 session_cookie=config_entry.data.get("session_cookie"),
                 token_auth=config_entry.data.get("token_auth"),
                 token_verify=config_entry.data.get("token_verify"),
+                proxy=(self._current_proxy or None),
             )
 
             self._accounts = await client.get_accounts()
@@ -264,8 +280,12 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
                 **self.config_entry.data,
                 SELECTED_ACCOUNTS: user_input[SELECTED_ACCOUNTS],
             }
+            new_options = {
+                **self.config_entry.options,
+                CONF_PROXY: (user_input.get(CONF_PROXY, "") or "").strip(),
+            }
             self.hass.config_entries.async_update_entry(
-                self.config_entry, data=new_data
+                self.config_entry, data=new_data, options=new_options
             )
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
             return self.async_create_entry(title="", data={})
@@ -281,7 +301,8 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Required(
                         SELECTED_ACCOUNTS, default=self._selected_accounts
-                    ): cv.multi_select(account_options)
+                    ): cv.multi_select(account_options),
+                    vol.Optional(CONF_PROXY, default=self._current_proxy): str,
                 }
             ),
         )
