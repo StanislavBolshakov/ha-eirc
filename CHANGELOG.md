@@ -1,3 +1,16 @@
+# [1.0.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.11.3...v1.0.0) (2025-10-26)
+
+
+### Features
+
+* **API:** - централизация логики запросов и удаление дублирования кода ([21aca4f](https://github.com/StanislavBolshakov/ha-eirc/commit/21aca4f6032269f3b7247e2032b532bae9216e1b))
+* единый скоординированный опрос для всех entity, управляемых интеграцией ([a40be32](https://github.com/StanislavBolshakov/ha-eirc/commit/a40be3288d2e053850ac8de35f739ee34c5fc9ed))
+
+
+### BREAKING CHANGES
+
+* **API:** конструктор EIRCApiClient был изменен и больше не принимает токены и cookie
+
 ## [0.11.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.11.2...v0.11.3) (2025-09-20)
 
 
