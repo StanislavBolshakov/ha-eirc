@@ -228,6 +228,7 @@ class EIRCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def _get_user_schema(self):
         return vol.Schema({vol.Required(USERNAME): str, vol.Required(PASSWORD): str})
 
+
 class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for the integration."""
 
