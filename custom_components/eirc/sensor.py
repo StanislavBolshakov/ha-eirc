@@ -55,6 +55,7 @@ class EIRCSensor(CoordinatorEntity, SensorEntity):
     """Representation of an EIRC account balance sensor."""
 
     _attr_has_entity_name = False
+    _attr_translation_key = "eirc_sensor"
 
     def __init__(
         self, coordinator: EircDataUpdateCoordinator, account_data: dict
@@ -96,7 +97,8 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
     """Representation of an EIRC meter sensor."""
 
     _attr_has_entity_name = False
-
+    _attr_translation_key = "eirc_meter_sensor"
+    
     def __init__(
         self,
         coordinator: EircDataUpdateCoordinator,
