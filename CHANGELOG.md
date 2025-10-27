@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.0.0...v1.0.1) (2025-10-27)
+
+
+### Bug Fixes
+
+* **sensor:** добавлен translation_key ([416f1df](https://github.com/StanislavBolshakov/ha-eirc/commit/416f1df69e5d0104ea2129a5e0045e987b6ea1e1))
+
 # [1.0.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v0.11.3...v1.0.0) (2025-10-26)
 
 
