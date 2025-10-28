@@ -257,6 +257,8 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
                 session_cookie=config_entry.data.get("session_cookie"),
                 token_auth=config_entry.data.get("token_auth"),
                 token_verify=config_entry.data.get("token_verify"),
+                proxy_url=config_entry.data.get(CONF_PROXY_URL),
+                proxy_type=config_entry.data.get(CONF_PROXY_TYPE, "http")
             )
 
             self._accounts = await client.get_accounts()
