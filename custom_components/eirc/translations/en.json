@@ -4,7 +4,11 @@
     "step": {
       "user": {
         "title": "Enter your credentials",
-        "description": "Provide your username and password to authenticate."
+        "description": "Provide your username and password to authenticate.",
+        "data": {
+          "proxy_url": "Proxy Server (optional)",
+          "proxy_type": "Proxy Type"
+        }
       },
       "2fa": {
         "title": "Two-Factor Authentication",
