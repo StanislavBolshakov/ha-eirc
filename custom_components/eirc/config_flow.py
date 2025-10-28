@@ -11,7 +11,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 
 from .api import EIRCApiClient, TwoFactorAuthRequired
-from .const import DOMAIN
+from .const import DOMAIN, CONF_PROXY_URL, CONF_PROXY_TYPE 
 
 _LOGGER = logging.getLogger(__name__)
 
