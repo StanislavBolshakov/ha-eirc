@@ -11,7 +11,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 
 from .api import EIRCApiClient, TwoFactorAuthRequired
-from .const import DOMAIN
+from .const import DOMAIN, CONF_PROXY_URL, CONF_PROXY_TYPE 
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,9 +39,11 @@ class EIRCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._username = user_input[USERNAME]
             self._password = user_input[PASSWORD]
+            self._proxy_url = user_input.get(CONF_PROXY_URL, "")
+            self._proxy_type = user_input.get(CONF_PROXY_TYPE, "http")
             _LOGGER.debug("Attempting authentication for user: %s", self._username)
 
-            self._client = EIRCApiClient(self.hass, self._username, self._password)
+            self._client = EIRCApiClient(self.hass, self._username, self._password, proxy_url=self._proxy_url, proxy_type=self._proxy_type)
 
             try:
                 await self._client.authenticate()
@@ -176,6 +178,8 @@ class EIRCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     USERNAME: self._username,
                     PASSWORD: self._password,
                     SELECTED_ACCOUNTS: self._selected_accounts,
+                    CONF_PROXY_URL: self._proxy_url,
+                    CONF_PROXY_TYPE: self._proxy_type,
                     **getattr(self, "_auth_entry_data", {}),
                 },
                 options={},
@@ -226,8 +230,12 @@ class EIRCConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return EIRCOptionsFlowHandler(config_entry)
 
     def _get_user_schema(self):
-        return vol.Schema({vol.Required(USERNAME): str, vol.Required(PASSWORD): str})
-
+        return vol.Schema({
+            vol.Required(USERNAME): str, 
+            vol.Required(PASSWORD): str,
+            vol.Optional(CONF_PROXY_URL, default=""): str,
+            vol.Optional(CONF_PROXY_TYPE, default="http"): vol.In(["http", "socks4", "socks5", "socks5h"])
+        })
 
 class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for the integration."""
@@ -249,6 +257,8 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow):
                 session_cookie=config_entry.data.get("session_cookie"),
                 token_auth=config_entry.data.get("token_auth"),
                 token_verify=config_entry.data.get("token_verify"),
+                proxy_url=config_entry.data.get(CONF_PROXY_URL),
+                proxy_type=config_entry.data.get(CONF_PROXY_TYPE, "http")
             )
 
             self._accounts = await client.get_accounts()

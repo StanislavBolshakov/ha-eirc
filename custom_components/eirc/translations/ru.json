@@ -86,7 +86,9 @@
         "description": "Введите номер телефона (в формате +7...) и пароль",
         "data": {
           "username": "Телефон",
-          "password": "Пароль"
+          "password": "Пароль",
+          "proxy_url": "Proxy Server (опционально)",
+          "proxy_type": "Proxy Type"
         }
       },
       "2fa": {

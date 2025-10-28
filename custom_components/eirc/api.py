@@ -4,13 +4,17 @@ import asyncio
 from json import JSONDecodeError
 import logging
 from typing import Any, Self
+from urllib.parse import urlparse
 
 from aiohttp import ClientResponseError, ClientSession
 from aiohttp.client_exceptions import ContentTypeError
+import aiohttp
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .const import CONF_PROXY_URL, CONF_PROXY_TYPE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,15 +66,26 @@ class EIRCApiClient:
         f"{API_BASE_URL}/v7/users/{{transaction_id}}/email/check/verification"
     )
 
-    def __init__(self, hass: HomeAssistant, username: str, password: str) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        username: str,
+        password: str,
+        proxy_url: str = None,
+        proxy_type: str = "http"
+    ) -> None:
         """Initialize the API client for a new login."""
         self.hass = hass
         self._username = username
         self._password = password
+        self._proxy_url = proxy_url
+        self._proxy_type = proxy_type
         self._session_cookie: str | None = None
         self._token_auth: str | None = None
         self._token_verify: str | None = None
         self._session: ClientSession | None = None
+        self._connector: aiohttp.TCPConnector | None = None
+        self._socks_connector = None
 
     @classmethod
     def from_saved_tokens(
@@ -81,9 +96,11 @@ class EIRCApiClient:
         session_cookie: str,
         token_auth: str,
         token_verify: str,
+        proxy_url: str = None,
+        proxy_type: str = "http"
     ) -> Self:
         """Instantiate the API client from saved session data."""
-        client = cls(hass, username, password)
+        client = cls(hass, username, password, proxy_url, proxy_type)
         client._session_cookie = session_cookie
         client._token_auth = token_auth
         client._token_verify = token_verify
@@ -91,10 +108,62 @@ class EIRCApiClient:
 
     @property
     def _get_session(self) -> ClientSession:
-        """Get or create an aiohttp session."""
+        """Get or create an aiohttp session with proxy support."""
         if self._session is None:
-            self._session = async_get_clientsession(self.hass)
+            if self._proxy_url and self._proxy_type.startswith('socks'):
+                self._create_socks_connector()
+                if self._socks_connector:
+                    self._session = ClientSession(connector=self._socks_connector)
+                else:
+                    self._session = async_get_clientsession(self.hass)
+            else:
+                self._session = async_get_clientsession(self.hass)
         return self._session
+
+    def _create_socks_connector(self):
+        """Create SOCKS connector with auth support."""
+        if not self._proxy_url or not self._proxy_type.startswith('socks'):
+            return
+
+        try:
+            from aiohttp_socks import ProxyConnector, ProxyType
+
+            parsed = urlparse(self._proxy_url)
+
+            if not parsed.scheme:
+                self._proxy_url = f"socks5://{self._proxy_url}"
+                parsed = urlparse(self._proxy_url)
+
+            host = parsed.hostname
+            port = parsed.port or 1080
+            username = parsed.username
+            password = parsed.password
+
+            _LOGGER.debug("Setting up %s proxy: %s:%s (user: %s)",
+                         self._proxy_type, host, port, username)
+
+            proxy_type = {
+                'socks4': ProxyType.SOCKS4,
+                'socks5': ProxyType.SOCKS5,
+                'socks5h': ProxyType.SOCKS5
+            }.get(self._proxy_type, ProxyType.SOCKS5)
+
+            self._socks_connector = ProxyConnector(
+                proxy_type=proxy_type,
+                host=host,
+                port=port,
+                username=username,
+                password=password,
+                rdns=True,
+                verify_ssl=False
+            )
+
+            _LOGGER.info("SOCKS proxy connector created successfully")
+
+        except ImportError:
+            _LOGGER.error("aiohttp_socks not installed. SOCKS proxy will not work.")
+        except Exception as e:
+            _LOGGER.error("Error creating SOCKS proxy connector: %s", e)
 
     def _craft_headers(self) -> dict[str, str]:
         """Generate headers for API requests."""
@@ -123,8 +192,14 @@ class EIRCApiClient:
         while retries < MAX_RETRIES:
             try:
                 headers = self._craft_headers()
+                request_kwargs = {"headers": headers, **kwargs}
+
+                if self._proxy_url and not self._proxy_type.startswith('socks'):
+                    request_kwargs["proxy"] = self._proxy_url
+                    _LOGGER.debug("Using HTTP proxy: %s", self._proxy_url)
+
                 async with self._get_session.request(
-                    method, url, headers=headers, **kwargs
+                    method, url, **request_kwargs
                 ) as resp:
                     resp.raise_for_status()
                     if resp.status == 204:
@@ -164,8 +239,13 @@ class EIRCApiClient:
         """Perform a simple POST that EXPECTS a JSON response."""
         headers = self._craft_headers()
         try:
+            request_kwargs = {"headers": headers}
+
+            if self._proxy_url and not self._proxy_type.startswith('socks'):
+                request_kwargs["proxy"] = self._proxy_url
+
             async with self._get_session.post(
-                url, json=payload, headers=headers
+                url, json=payload, **request_kwargs
             ) as resp:
                 resp.raise_for_status()
                 return await resp.json()
@@ -179,7 +259,12 @@ class EIRCApiClient:
         """Fetch and store the session cookie."""
         headers = {"User-Agent": self._USER_AGENT}
         try:
-            async with self._get_session.get(self.COOKIE_URL, headers=headers) as resp:
+            request_kwargs = {"headers": headers}
+
+            if self._proxy_url and not self._proxy_type.startswith('socks'):
+                request_kwargs["proxy"] = self._proxy_url
+
+            async with self._get_session.get(self.COOKIE_URL, **request_kwargs) as resp:
                 resp.raise_for_status()
                 if self._COOKIE_NAME not in resp.cookies:
                     raise MissingSessionCookieError(
@@ -202,8 +287,13 @@ class EIRCApiClient:
 
         try:
             headers = self._craft_headers()
+            request_kwargs = {"headers": headers}
+
+            if self._proxy_url and not self._proxy_type.startswith('socks'):
+                request_kwargs["proxy"] = self._proxy_url
+
             async with self._get_session.post(
-                self.AUTH_URL, json=payload, headers=headers
+                self.AUTH_URL, json=payload, **request_kwargs
             ) as response:
                 if response.status == 424:
                     data = await response.json()
@@ -248,7 +338,12 @@ class EIRCApiClient:
         headers = self._craft_headers()
 
         try:
-            async with self._get_session.post(url, headers=headers) as resp:
+            request_kwargs = {"headers": headers}
+
+            if self._proxy_url and not self._proxy_type.startswith('socks'):
+                request_kwargs["proxy"] = self._proxy_url
+
+            async with self._get_session.post(url, **request_kwargs) as resp:
                 resp.raise_for_status()
             _LOGGER.debug("2FA verification email sent successfully.")
         except ClientResponseError as err:
@@ -284,3 +379,17 @@ class EIRCApiClient:
         _LOGGER.debug(
             "Meter reading successfully sent for meter %s.", meter_registration
         )
+
+    async def close(self):
+        """Close the session and connector."""
+        if self._session:
+            await self._session.close()
+        if self._socks_connector:
+            await self._socks_connector.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Cleanup on exit."""
+        await self.close()

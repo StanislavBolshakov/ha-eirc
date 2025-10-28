@@ -14,7 +14,14 @@ from homeassistant.helpers import config_validation as cv
 import homeassistant.helpers.entity_registry as er
 
 from .api import EIRCApiClient
-from .const import ATTR_ENTITY_ID, ATTR_READINGS, DOMAIN, SERVICE_SEND_METER_READING
+from .const import (
+    ATTR_ENTITY_ID, 
+    ATTR_READINGS, 
+    DOMAIN, 
+    SERVICE_SEND_METER_READING, 
+    CONF_PROXY_URL, 
+    CONF_PROXY_TYPE
+)
 from .coordinator import EircDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,6 +57,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session_cookie=entry.data["session_cookie"],
         token_auth=entry.data["token_auth"],
         token_verify=entry.data["token_verify"],
+        proxy_url=entry.data.get(CONF_PROXY_URL),
+        proxy_type=entry.data.get(CONF_PROXY_TYPE, "http")
     )
 
     coordinator = EircDataUpdateCoordinator(hass, client=client)
