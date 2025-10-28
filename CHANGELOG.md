@@ -1,5 +1,8 @@
 ## [1.0.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.0.0...v1.0.1) (2025-10-27)
 
+### Features
+
+* Add proxy support
 
 ### Bug Fixes
 
