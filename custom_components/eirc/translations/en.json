@@ -1,46 +1,147 @@
 {
-  "title": "EIRC Integration",
+  "title": "EIRC SPb",
+  "entity": {
+    "sensor": {
+      "eirc_sensor": {
+        "state_attributes": {
+          "account_id": {
+            "name": "Account ID"
+          },
+          "tenancy": {
+            "name": "Tenancy"
+          },
+          "service_provider": {
+            "name": "Service Provider"
+          },
+          "delivery_method": {
+            "name": "Bill Delivery Method",
+            "state": {
+              "ELECTRONIC": "Email",
+              "PAPER": "Paper"
+            }
+          },
+          "confirmed": {
+            "name": "Confirmed"
+          },
+          "auto_payment": {
+            "name": "Automatic Payment",
+            "state": {
+              "false": "No",
+              "true": "Yes"
+            }
+          }
+        }
+      },
+      "eirc_meter_sensor": {
+        "state_attributes": {
+          "account_id": {
+            "name": "Account ID"
+          },
+          "tenancy": {
+            "name": "Tenancy"
+          },
+          "service_provider": {
+            "name": "Service Provider"
+          },
+          "delivery_method": {
+            "name": "Bill Delivery Method",
+            "state": {
+              "ELECTRONIC": "Email",
+              "PAPER": "Paper"
+            }
+          },
+          "confirmed": {
+            "name": "Confirmed"
+          },
+          "auto_payment": {
+            "name": "Automatic Payment",
+            "state": {
+              "false": "No",
+              "true": "Yes"
+            }
+          },
+          "meter_id": {
+            "name": "Meter ID"
+          },
+          "meter_name": {
+            "name": "Meter Name"
+          },
+          "scale_name": {
+            "name": "Tariff Name"
+          },
+          "scale_id": {
+            "name": "Tariff ID"
+          },
+          "last_update": {
+            "name": "Last Update"
+          }
+        }
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
-        "title": "Enter your credentials",
-        "description": "Provide your username and password to authenticate."
-      },
-      "2fa": {
-        "title": "Two-Factor Authentication",
-        "description": "A verification code was sent to the email address associated with {username}. Please enter it below to continue",
+        "title": "Authentication",
+        "description": "Enter your phone number (in +7...) and password",
         "data": {
-          "code": "Verification Code"
+          "username": "Phone",
+          "password": "Password",
+          "use_proxy": "Use proxy",
+          "proxy_url": "HTTP Proxy URL"
         }
       },
       "account": {
         "title": "Select accounts",
-        "description": "Choose which accounts you want to monitor."
-      },
-      "account_selection": {
-        "title": "Account Selection",
-        "description": "Found {account_count} account(s) for {username}. Select the accounts you wish to track.",
+        "description": "Please select which accounts to monitor",
         "data": {
-          "accounts": "Accounts:"
+          "selected_accounts": "Accounts"
         }
+      },
+      "2fa": {
+        "title": "Two-Factor Authentication",
+        "description": "Enter the code from the email sent to your mailbox",
+        "data": {
+          "code": "Verification Code"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthentication",
+        "description": "You need to log in again."
       }
     },
     "error": {
       "invalid_auth": "Invalid username or password",
-      "cannot_connect": "Unable to connect to the server",
-      "no_valid_accounts": "No valid accounts found",
-      "invalid_code": "The code you entered is incorrect. Please try again"
+      "cannot_connect": "Cannot connect to server",
+      "no_valid_accounts": "No confirmed accounts",
+      "proxy_url_required": "HTTP Proxy URL is required when using proxy",
+      "invalid_proxy_url": "Invalid HTTP Proxy URL format",
+      "cannot_fetch_accounts": "Failed to fetch accounts",
+      "entry_not_found": "Configuration entry not found",
+      "2fa_method_not_supported": "2FA method is not supported",
+      "2fa_send_failed": "Failed to send 2FA code",
+      "invalid_code": "Invalid verification code"
+    },
+    "abort": {
+      "reauth_successful": "Reauthentication successful",
+      "already_configured": "Account already configured"
     }
   },
   "options": {
     "step": {
       "account_selection": {
-        "title": "Account Selection",
-        "description": "Select the accounts you wish to track.",
+        "title": "Select accounts",
+        "description": "Please select which accounts to monitor",
         "data": {
-          "accounts": "Accounts:"
+          "selected_accounts": "Accounts",
+          "use_proxy": "Use proxy",
+          "proxy_url": "HTTP Proxy URL"
         }
       }
+    },
+    "error": {
+      "proxy_url_required": "HTTP Proxy URL is required when using proxy",
+      "invalid_proxy_url": "Invalid HTTP Proxy URL format"
     }
   }
 }
