@@ -1,3 +1,10 @@
+## [1.1.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.1.2...v1.1.3) (2025-11-08)
+
+
+### Bug Fixes
+
+* **EIRC:** исправлена ссылки на несуществующие шаблоны ([e9eb097](https://github.com/StanislavBolshakov/ha-eirc/commit/e9eb0971edd8726a3ad22c4a9dda43c139e9f26b))
+
 ## [1.1.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.1.1...v1.1.2) (2025-11-08)
 
 
