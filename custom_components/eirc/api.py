@@ -12,6 +12,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .const import CONF_SESSION_COOKIE, CONF_TOKEN_AUTH, CONF_TOKEN_VERIFY
+
 _LOGGER = logging.getLogger(__name__)
 
 MAX_RETRIES = 5
@@ -62,15 +64,52 @@ class EIRCApiClient:
         f"{API_BASE_URL}/v7/users/{{transaction_id}}/email/check/verification"
     )
 
-    def __init__(self, hass: HomeAssistant, username: str, password: str) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        username: str,
+        password: str,
+        proxy: str | None = None,
+    ) -> None:
         """Initialize the API client for a new login."""
         self.hass = hass
         self._username = username
         self._password = password
+        self._proxy = proxy if self._validate_proxy_url(proxy) else None
         self._session_cookie: str | None = None
         self._token_auth: str | None = None
         self._token_verify: str | None = None
         self._session: ClientSession | None = None
+
+        if self._proxy:
+            _LOGGER.debug("EIRC client initialized with proxy: %s", self._proxy)
+
+    def get_token_state(self) -> dict[str, str | None]:
+        """Get current token state for persistence."""
+        return {
+            CONF_SESSION_COOKIE: self._session_cookie,
+            CONF_TOKEN_AUTH: self._token_auth,
+            CONF_TOKEN_VERIFY: self._token_verify,
+        }
+
+    @staticmethod
+    def _validate_proxy_url(url: str | None) -> bool:
+        """Validate proxy URL format without breaking existing functionality."""
+        if not url:
+            return False
+
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+
+        if not parsed.scheme or parsed.scheme not in ("http", "https"):
+            _LOGGER.warning(
+                "Proxy URL '%s' may be invalid - missing http/https scheme", url
+            )
+        elif not parsed.netloc:
+            _LOGGER.warning("Proxy URL '%s' may be invalid - missing host", url)
+
+        return True
 
     @classmethod
     def from_saved_tokens(
@@ -81,12 +120,17 @@ class EIRCApiClient:
         session_cookie: str,
         token_auth: str,
         token_verify: str,
+        proxy: str | None = None,
     ) -> Self:
         """Instantiate the API client from saved session data."""
-        client = cls(hass, username, password)
+        client = cls(hass, username, password, proxy=proxy)
         client._session_cookie = session_cookie
         client._token_auth = token_auth
         client._token_verify = token_verify
+
+        if client._proxy:
+            _LOGGER.debug("EIRC client restored with proxy: %s", client._proxy)
+
         return client
 
     @property
@@ -123,8 +167,12 @@ class EIRCApiClient:
         while retries < MAX_RETRIES:
             try:
                 headers = self._craft_headers()
+
+                if retries == 0 and self._proxy:
+                    _LOGGER.debug("Making API request via proxy: %s", self._proxy)
+
                 async with self._get_session.request(
-                    method, url, headers=headers, **kwargs
+                    method, url, headers=headers, proxy=self._proxy, **kwargs
                 ) as resp:
                     resp.raise_for_status()
                     if resp.status == 204:
@@ -139,6 +187,8 @@ class EIRCApiClient:
                     _LOGGER.warning("Received 401 Unauthorized. Re-authenticating.")
                     self._token_auth = None
                     await self.authenticate()
+                    retries += 1
+                    continue
                 elif err.status in [400, 429, 500, 503]:
                     _LOGGER.warning(
                         "API error %d. Retrying in %d seconds.",
@@ -164,8 +214,11 @@ class EIRCApiClient:
         """Perform a simple POST that EXPECTS a JSON response."""
         headers = self._craft_headers()
         try:
+            if self._proxy:
+                _LOGGER.debug("Making simple POST via proxy: %s", self._proxy)
+
             async with self._get_session.post(
-                url, json=payload, headers=headers
+                url, json=payload, headers=headers, proxy=self._proxy
             ) as resp:
                 resp.raise_for_status()
                 return await resp.json()
@@ -179,15 +232,34 @@ class EIRCApiClient:
         """Fetch and store the session cookie."""
         headers = {"User-Agent": self._USER_AGENT}
         try:
-            async with self._get_session.get(self.COOKIE_URL, headers=headers) as resp:
+            if self._proxy:
+                _LOGGER.debug("Fetching session cookie via proxy: %s", self._proxy)
+
+            async with self._get_session.get(
+                self.COOKIE_URL, headers=headers, proxy=self._proxy
+            ) as resp:
                 resp.raise_for_status()
+
                 if self._COOKIE_NAME not in resp.cookies:
+                    _LOGGER.error(
+                        "Session cookie missing from response. Available cookies: %s, "
+                        "Status: %s, Headers: %s",
+                        list(resp.cookies.keys()),
+                        resp.status,
+                        dict(resp.headers),
+                    )
                     raise MissingSessionCookieError(
                         f"Cookie '{self._COOKIE_NAME}' not in response"
                     )
+
                 self._session_cookie = resp.cookies[self._COOKIE_NAME].value
                 _LOGGER.debug("Session cookie fetched successfully.")
+
         except ClientResponseError as err:
+            _LOGGER.error("HTTP error fetching session cookie: %s", err)
+            raise MissingSessionCookieError("Could not fetch session cookie") from err
+        except Exception as err:
+            _LOGGER.exception("Unexpected error fetching session cookie")
             raise MissingSessionCookieError("Could not fetch session cookie") from err
 
     async def authenticate(self) -> None:
@@ -202,8 +274,12 @@ class EIRCApiClient:
 
         try:
             headers = self._craft_headers()
+
+            if self._proxy:
+                _LOGGER.debug("Authenticating via proxy: %s", self._proxy)
+
             async with self._get_session.post(
-                self.AUTH_URL, json=payload, headers=headers
+                self.AUTH_URL, json=payload, headers=headers, proxy=self._proxy
             ) as response:
                 if response.status == 424:
                     data = await response.json()
@@ -248,7 +324,12 @@ class EIRCApiClient:
         headers = self._craft_headers()
 
         try:
-            async with self._get_session.post(url, headers=headers) as resp:
+            if self._proxy:
+                _LOGGER.debug("Sending 2FA email via proxy: %s", self._proxy)
+
+            async with self._get_session.post(
+                url, headers=headers, proxy=self._proxy
+            ) as resp:
                 resp.raise_for_status()
             _LOGGER.debug("2FA verification email sent successfully.")
         except ClientResponseError as err:

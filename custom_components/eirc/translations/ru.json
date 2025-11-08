@@ -21,7 +21,7 @@
             }
           },
           "confirmed": {
-            "name": "Confirmed"
+            "name": "Подтверждено"
           },
           "auto_payment": {
             "name": "Автоматический платеж",
@@ -51,7 +51,7 @@
             }
           },
           "confirmed": {
-            "name": "Confirmed"
+            "name": "Подтверждено"
           },
           "auto_payment": {
             "name": "Автоматический платеж",
@@ -86,29 +86,45 @@
         "description": "Введите номер телефона (в формате +7...) и пароль",
         "data": {
           "username": "Телефон",
-          "password": "Пароль"
-        }
-      },
-      "2fa": {
-        "title": "Двухфакторная аутентификация",
-        "description": "Код подтверждения был отправлен на адрес электронной почты, связанный с {username}. Пожалуйста, введите его ниже, чтобы продолжить.",
-        "data": {
-          "code": "Код подтверждения"
+          "password": "Пароль",
+          "use_proxy": "Использовать прокси",
+          "proxy_url": "HTTP Proxy URL"
         }
       },
       "account": {
         "title": "Выбор аккаунтов",
         "description": "Пожалуйста, выберите, какие учетные записи отслеживать",
         "data": {
-          "accounts": "Аккаунты:"
+          "selected_accounts": "Аккаунты"
         }
+      },
+      "2fa": {
+        "title": "Двухфакторная аутентификация",
+        "description": "Введите код из письма, отправленного на почту",
+        "data": {
+          "code": "Код подтверждения"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Повторная аутентификация",
+        "description": "Пользователь: {username}\n\nНеобходимо повторно войти в систему."
       }
     },
     "error": {
       "invalid_auth": "Неправильное имя пользователя или пароль",
-      "cannot_connect": "Не могу подключиться к серверу ЕИРЦ",
-      "no_valid_accounts": "No valid accounts found",
-      "invalid_code": "Введённый вами код неверен. Пожалуйста, попробуйте снова"
+      "cannot_connect": "Не могу подключиться к серверу",
+      "no_valid_accounts": "Нет подтвержденных учетных записей",
+      "proxy_url_required": "HTTP Proxy URL обязателен, когда включено использование прокси",
+      "invalid_proxy_url": "Неверный формат HTTP Proxy URL",
+      "cannot_fetch_accounts": "Не удалось получить список аккаунтов",
+      "entry_not_found": "Конфигурационная запись не найдена",
+      "2fa_method_not_supported": "Метод 2FA не поддерживается",
+      "2fa_send_failed": "Не удалось отправить код 2FA",
+      "invalid_code": "Неверный код подтверждения"
+    },
+    "abort": {
+      "reauth_successful": "Повторная аутентификация успешна",
+      "already_configured": "Учетная запись уже настроена"
     }
   },
   "options": {
@@ -117,9 +133,15 @@
         "title": "Выбор аккаунтов",
         "description": "Пожалуйста, выберите, какие из них отслеживать",
         "data": {
-          "accounts": "Аккаунты:"
+          "selected_accounts": "Аккаунты",
+          "use_proxy": "Использовать прокси",
+          "proxy_url": "HTTP Proxy URL"
         }
       }
+    },
+    "error": {
+      "proxy_url_required": "HTTP Proxy URL обязателен, когда включено использование прокси",
+      "invalid_proxy_url": "Неверный формат HTTP Proxy URL"
     }
   }
 }

@@ -98,7 +98,7 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
 
     _attr_has_entity_name = False
     _attr_translation_key = "eirc_meter_sensor"
-    
+
     def __init__(
         self,
         coordinator: EircDataUpdateCoordinator,
