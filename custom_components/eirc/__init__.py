@@ -13,7 +13,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 import homeassistant.helpers.entity_registry as er
 
-from .api import EIRCApiClient
 from .const import ATTR_ENTITY_ID, ATTR_READINGS, DOMAIN, SERVICE_SEND_METER_READING
 from .coordinator import EircDataUpdateCoordinator
 
@@ -43,16 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up EIRC from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
-    client = EIRCApiClient.from_saved_tokens(
-        hass=hass,
-        username=entry.data["username"],
-        password=entry.data["password"],
-        session_cookie=entry.data["session_cookie"],
-        token_auth=entry.data["token_auth"],
-        token_verify=entry.data["token_verify"],
-    )
-
-    coordinator = EircDataUpdateCoordinator(hass, client=client)
+    coordinator = EircDataUpdateCoordinator(hass, config_entry=entry)
 
     await coordinator.async_config_entry_first_refresh()
 
