@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.0.1...v1.1.0) (2025-11-08)
+
+
+### Features
+
+* **EIRC:** добавлена поддержка HTTP Proxy ([cbb2eba](https://github.com/StanislavBolshakov/ha-eirc/commit/cbb2ebad184a2ec70e09ae89ae0600ca9356ad34))
+
 ## [1.0.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.0.0...v1.0.1) (2025-10-27)
 
 
