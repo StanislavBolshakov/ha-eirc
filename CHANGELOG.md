@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.1.0...v1.1.1) (2025-11-08)
+
+
+### Bug Fixes
+
+* **EIRC:** исправлена инициализация координатора ([33b3d0a](https://github.com/StanislavBolshakov/ha-eirc/commit/33b3d0a805f90bab96ea5895f5e39190278a028f))
+
 # [1.1.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.0.1...v1.1.0) (2025-11-08)
 
 
