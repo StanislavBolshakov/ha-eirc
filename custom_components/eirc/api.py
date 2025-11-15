@@ -200,7 +200,6 @@ class EIRCApiClient:
                 if err.status == 401 and url != self.AUTH_URL:
                     _LOGGER.warning(f"Received {err.status}. Re-authenticating.")
                     self._token_auth = None
-                    self._token_verify = None
                     await self.authenticate()
                     continue
                 if err.status == 403 and url != self.AUTH_URL:
