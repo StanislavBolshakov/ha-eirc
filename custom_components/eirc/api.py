@@ -5,6 +5,7 @@ from json import JSONDecodeError
 import logging
 from typing import Any, Self
 
+import aiohttp
 from aiohttp import ClientResponseError, ClientSession
 from aiohttp.client_exceptions import ContentTypeError
 
@@ -19,6 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 MAX_RETRIES = 5
 INITIAL_BACKOFF = 4
 BACKOFF_MULTIPLIER = 2
+REQUEST_TIMEOUT = 30
 
 
 class EircApiClientError(HomeAssistantError):
@@ -49,6 +51,7 @@ class EIRCApiClient:
 
     _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36"
     _COOKIE_NAME = "session-cookie"
+    _REQUEST_TIMEOUT = REQUEST_TIMEOUT
 
     API_BASE_URL = "https://ikus.pesc.ru/api"
     AUTH_URL = f"{API_BASE_URL}/v8/users/auth"
@@ -156,6 +159,30 @@ class EIRCApiClient:
             headers["Auth-Verification"] = self._token_verify
         return headers
 
+    def _log_proxy_debug(self, action: str) -> None:
+        """Log debug message about proxy usage if proxy is configured."""
+        if self._proxy:
+            _LOGGER.debug("%s via proxy: %s", action, self._proxy)
+
+    async def _execute_request(
+        self, method: str, url: str, headers: dict[str, str], **kwargs: Any
+    ) -> Any:
+        """Execute a single HTTP request with consistent handling."""
+        self._log_proxy_debug(f"Making {method.upper()} request")
+
+        timeout = aiohttp.ClientTimeout(total=self._REQUEST_TIMEOUT)
+
+        async with self._get_session.request(
+            method, url, headers=headers, proxy=self._proxy, timeout=timeout, **kwargs
+        ) as resp:
+            resp.raise_for_status()
+            if resp.status == 204:
+                return None
+            try:
+                return await resp.json()
+            except (JSONDecodeError, ContentTypeError):
+                return await resp.text()
+
     async def _api_request(self, method: str, url: str, **kwargs: Any) -> Any:
         """Make a resilient API request with retry and re-authentication."""
         retries = 0
@@ -167,76 +194,90 @@ class EIRCApiClient:
         while retries < MAX_RETRIES:
             try:
                 headers = self._craft_headers()
-
-                if retries == 0 and self._proxy:
-                    _LOGGER.debug("Making API request via proxy: %s", self._proxy)
-
-                async with self._get_session.request(
-                    method, url, headers=headers, proxy=self._proxy, **kwargs
-                ) as resp:
-                    resp.raise_for_status()
-                    if resp.status == 204:
-                        return None
-                    try:
-                        return await resp.json()
-                    except (JSONDecodeError, ContentTypeError):
-                        return await resp.text()
+                return await self._execute_request(method, url, headers, **kwargs)
 
             except ClientResponseError as err:
                 if err.status == 401 and url != self.AUTH_URL:
-                    _LOGGER.warning("Received 401 Unauthorized. Re-authenticating.")
+                    _LOGGER.warning(f"Received {err.status}. Re-authenticating.")
                     self._token_auth = None
+                    self._token_verify = None
                     await self.authenticate()
-                    retries += 1
                     continue
-                elif err.status in [400, 429, 500, 503]:
+                if err.status == 403 and url != self.AUTH_URL:
+                    _LOGGER.warning(f"Received {err.status}. Re-authenticating.")
+                    self._token_auth = None
+                    self._token_verify = None
+                    self._session_cookie = None
+                    await self.authenticate()
+                    continue
+                if err.status in [400, 429, 500, 503]:
                     _LOGGER.warning(
-                        "API error %d. Retrying in %d seconds.",
+                        "API error %d. Retrying in %d seconds (attempt %d/%d).",
                         err.status,
                         backoff_time,
+                        retries + 1,
+                        MAX_RETRIES,
                     )
                     await asyncio.sleep(backoff_time)
                     backoff_time *= BACKOFF_MULTIPLIER
+                    retries += 1
                 else:
                     raise EircApiClientError(
                         f"API request failed with status {err.status}"
                     ) from err
-            except Exception as err:
-                _LOGGER.error("Caught unexpected exception in _api_request: %s", err)
-                raise EircApiClientError(
-                    "An unexpected error occurred during API request"
-                ) from err
-            retries += 1
+
+            except asyncio.TimeoutError as err:
+                _LOGGER.warning(
+                    "Request timeout. Retrying in %d seconds (attempt %d/%d).",
+                    backoff_time,
+                    retries + 1,
+                    MAX_RETRIES,
+                )
+                await asyncio.sleep(backoff_time)
+                backoff_time *= BACKOFF_MULTIPLIER
+                retries += 1
+
+            except Exception:
+                _LOGGER.exception("Unexpected error in _api_request")
+                raise
 
         raise MaxRetriesExceededError(f"Max retries reached for API call to {url}")
 
     async def _simple_post(self, url: str, payload: dict | None = None) -> Any:
         """Perform a simple POST that EXPECTS a JSON response."""
         headers = self._craft_headers()
-        try:
-            if self._proxy:
-                _LOGGER.debug("Making simple POST via proxy: %s", self._proxy)
 
+        try:
+            self._log_proxy_debug("Making simple POST")
+
+            timeout = aiohttp.ClientTimeout(total=self._REQUEST_TIMEOUT)
             async with self._get_session.post(
-                url, json=payload, headers=headers, proxy=self._proxy
+                url, json=payload, headers=headers, proxy=self._proxy, timeout=timeout
             ) as resp:
                 resp.raise_for_status()
                 return await resp.json()
 
         except ClientResponseError as err:
             raise EircApiClientError(f"API call failed: {err.message}") from err
-        except (JSONDecodeError, ContentTypeError):
-            raise EircApiClientError("Failed to decode server response as JSON.")
+        except (JSONDecodeError, ContentTypeError) as err:
+            raise EircApiClientError(
+                "Failed to decode server response as JSON."
+            ) from err
 
     async def _fetch_session_cookie(self) -> None:
-        """Fetch and store the session cookie."""
+        """Fetch and store the session cookie, clearing old cookies first."""
         headers = {"User-Agent": self._USER_AGENT}
-        try:
-            if self._proxy:
-                _LOGGER.debug("Fetching session cookie via proxy: %s", self._proxy)
 
+        try:
+            self._log_proxy_debug("Fetching session cookie")
+
+            jar = self._get_session.cookie_jar
+            jar.clear()
+            self._session_cookie = None
+
+            timeout = aiohttp.ClientTimeout(total=self._REQUEST_TIMEOUT)
             async with self._get_session.get(
-                self.COOKIE_URL, headers=headers, proxy=self._proxy
+                self.COOKIE_URL, headers=headers, proxy=self._proxy, timeout=timeout
             ) as resp:
                 resp.raise_for_status()
 
@@ -253,7 +294,9 @@ class EIRCApiClient:
                     )
 
                 self._session_cookie = resp.cookies[self._COOKIE_NAME].value
-                _LOGGER.debug("Session cookie fetched successfully.")
+                _LOGGER.debug(
+                    "Session cookie fetched successfully: %s", self._session_cookie
+                )
 
         except ClientResponseError as err:
             _LOGGER.error("HTTP error fetching session cookie: %s", err)
@@ -265,6 +308,9 @@ class EIRCApiClient:
     async def authenticate(self) -> None:
         """Authenticate and establish a session."""
         if self._token_auth and self._token_verify:
+            _LOGGER.debug(
+                "Authentication tokens already present, skipping authentication"
+            )
             return
 
         if not self._session_cookie:
@@ -274,12 +320,15 @@ class EIRCApiClient:
 
         try:
             headers = self._craft_headers()
+            self._log_proxy_debug("Authenticating")
 
-            if self._proxy:
-                _LOGGER.debug("Authenticating via proxy: %s", self._proxy)
-
+            timeout = aiohttp.ClientTimeout(total=self._REQUEST_TIMEOUT)
             async with self._get_session.post(
-                self.AUTH_URL, json=payload, headers=headers, proxy=self._proxy
+                self.AUTH_URL,
+                json=payload,
+                headers=headers,
+                proxy=self._proxy,
+                timeout=timeout,
             ) as response:
                 if response.status == 424:
                     data = await response.json()
@@ -291,6 +340,7 @@ class EIRCApiClient:
                 data = await response.json()
                 self._token_auth = data.get("auth")
                 _LOGGER.debug("Authentication successful.")
+
         except ClientResponseError as err:
             raise EircApiClientError(f"Authentication failed: {err}") from err
 
@@ -324,11 +374,11 @@ class EIRCApiClient:
         headers = self._craft_headers()
 
         try:
-            if self._proxy:
-                _LOGGER.debug("Sending 2FA email via proxy: %s", self._proxy)
+            self._log_proxy_debug("Sending 2FA email")
 
+            timeout = aiohttp.ClientTimeout(total=self._REQUEST_TIMEOUT)
             async with self._get_session.post(
-                url, headers=headers, proxy=self._proxy
+                url, headers=headers, proxy=self._proxy, timeout=timeout
             ) as resp:
                 resp.raise_for_status()
             _LOGGER.debug("2FA verification email sent successfully.")

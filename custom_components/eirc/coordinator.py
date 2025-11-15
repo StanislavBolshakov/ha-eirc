@@ -5,8 +5,9 @@ import logging
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.config_entries import ConfigEntryAuthFailed
 
-from .api import EIRCApiClient, EircApiClientError
+from .api import EIRCApiClient, EircApiClientError, TwoFactorAuthRequired
 from .const import DOMAIN, CONF_SESSION_COOKIE, CONF_TOKEN_AUTH, CONF_TOKEN_VERIFY
 
 _LOGGER = logging.getLogger(__name__)
@@ -72,9 +73,14 @@ class EircDataUpdateCoordinator(DataUpdateCoordinator):
 
             return processed_data
 
+        except TwoFactorAuthRequired as err:
+            _LOGGER.warning("2FA required during reauthentication: %s", err)
+            raise ConfigEntryAuthFailed("Reauthentication required due to 2FA") from err
+
         except EircApiClientError as err:
             _LOGGER.error("Error communicating with API: %s", err)
             raise UpdateFailed(f"Error communicating with API: {err}") from err
+
         except Exception as err:
             _LOGGER.exception("Unexpected error fetching EIRC data")
             raise UpdateFailed(f"Unexpected error: {err}") from err

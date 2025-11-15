@@ -262,7 +262,7 @@ class EIRCConfigFlow(config_entries.ConfigFlow, EIRCCommonFlowMixin, domain=DOMA
         return self.async_show_form(
             step_id="2fa",
             data_schema=vol.Schema({vol.Required("code"): str}),
-            errors=errors
+            errors=errors,
         )
 
     async def async_step_account(
@@ -314,9 +314,7 @@ class EIRCConfigFlow(config_entries.ConfigFlow, EIRCCommonFlowMixin, domain=DOMA
         """Confirm reauthentication."""
         if user_input is None:
             entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-            return self.async_show_form(
-                step_id="reauth_confirm"
-            )
+            return self.async_show_form(step_id="reauth_confirm")
         return await self.async_step_user()
 
     @staticmethod
