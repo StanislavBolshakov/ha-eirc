@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.1.4...v1.2.0) (2025-12-28)
+
+
+### Features
+
+* **EIRC:** новогодний FEATURE DROP 🎄 🎁 Добавлен сервис получения счета в PDF для учетной записи ([d36b7c2](https://github.com/StanislavBolshakov/ha-eirc/commit/d36b7c2015874752d5fcb27d6eeaf02f605b91a8))
+
 ## [1.1.4](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.1.3...v1.1.4) (2025-11-15)
 
 
