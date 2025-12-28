@@ -58,10 +58,11 @@ class EircDataUpdateCoordinator(DataUpdateCoordinator):
                 tenancy_id = account["tenancy"]["register"]
 
                 meters_info = await self.client.get_meters_info(account_id)
-                balance = await self.client.get_account_balance(account_id)
+                balance_data = await self.client.get_account_balance(account_id)
 
                 account["meters"] = meters_info
-                account["balance"] = balance
+                account["balance"] = balance_data["balance"]
+                account["bill_id"] = balance_data["bill_id"]
                 processed_data[tenancy_id] = account
 
             await self._async_save_tokens()

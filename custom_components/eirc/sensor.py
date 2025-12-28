@@ -90,6 +90,7 @@ class EIRCSensor(CoordinatorEntity, SensorEntity):
             "delivery_method": account_data.get("delivery"),
             "confirmed": account_data.get("confirmed"),
             "auto_payment": account_data.get("autoPaymentOn"),
+            "bill_id": account_data.get("bill_id"),
         }
 
 

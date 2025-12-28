@@ -29,6 +29,9 @@
               "false": "No",
               "true": "Yes"
             }
+          },
+          "bill_id": {
+            "name": "Bill ID"
           }
         }
       },
@@ -75,6 +78,22 @@
           "last_update": {
             "name": "Last Update"
           }
+        }
+      }
+    }
+  },
+  "services": {
+    "download_bill": {
+      "name": "Download bill",
+      "description": "Download a bill PDF for given account ID and bill ID",
+      "fields": {
+        "account_id": {
+          "name": "Account ID",
+          "description": "Account ID to download bill"
+        },
+        "bill_id": {
+          "name": "Bill ID",
+          "description": "Bill ID"
         }
       }
     }

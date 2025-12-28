@@ -29,6 +29,9 @@
               "false": "Нет",
               "true": "Да"
             }
+          },
+          "bill_id": {
+            "name": "ID счета"
           }
         }
       },
@@ -75,6 +78,22 @@
           "last_update": {
             "name": "Последнее обновление"
           }
+        }
+      }
+    }
+  },
+  "services": {
+    "download_bill": {
+      "name": "Скачать счет",
+      "description": "Скачать счет в PDF для указанного аккаунта",
+      "fields": {
+        "account_id": {
+          "name": "ID аккаунта",
+          "description": "ID аккаунта для скачивания счета"
+        },
+        "bill_id": {
+          "name": "ID счета",
+          "description": "ID счета для скачивания"
         }
       }
     }

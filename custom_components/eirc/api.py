@@ -57,6 +57,13 @@ class EIRCApiClient:
     AUTH_URL = f"{API_BASE_URL}/v8/users/auth"
     ACCOUNTS_URL = f"{API_BASE_URL}/v8/accounts"
     ACCOUNT_BALANCE_URL = f"{API_BASE_URL}/v7/accounts/{{account_id}}/payments/at/current/amount/discretion"
+    CURRENT_BILL_URL = (
+        f"{API_BASE_URL}/v8/accounts/{{account_id}}/payments/bills/current"
+    )
+    BILL_UUID_URL = (
+        f"{API_BASE_URL}/v7/accounts/{{account_id}}/payments/bills/{{bill_id}}/uuid"
+    )
+    FILE_URL = f"{API_BASE_URL}/v1/file/{{uuid}}"
     METERS_INFO_URL = f"{API_BASE_URL}/v6/accounts/{{account_id}}/meters/info"
     SEND_METER_READING_URL = f"{API_BASE_URL}/v8/accounts/{{account_id}}/meters/{{meter_registration}}/reading"
     COOKIE_URL = f"{API_BASE_URL}/v6/users/manual/existence"
@@ -181,7 +188,10 @@ class EIRCApiClient:
             try:
                 return await resp.json()
             except (JSONDecodeError, ContentTypeError):
-                return await resp.text()
+                try:
+                    return await resp.text()
+                except UnicodeDecodeError:
+                    return await resp.read()
 
     async def _api_request(self, method: str, url: str, **kwargs: Any) -> Any:
         """Make a resilient API request with retry and re-authentication."""
@@ -388,15 +398,26 @@ class EIRCApiClient:
         """Fetch all accounts from the API."""
         return await self._api_request("get", self.ACCOUNTS_URL)
 
-    async def get_account_balance(self, account_id: int) -> float:
-        """Fetch the account balance for a given account ID."""
-        url = self.ACCOUNT_BALANCE_URL.format(account_id=account_id)
+    async def get_account_balance(self, account_id: int) -> dict[str, Any]:
+        """Fetch the account balance and bill ID for a given account ID."""
+        url = self.CURRENT_BILL_URL.format(account_id=account_id)
         data = await self._api_request("get", url)
-        return sum(
-            item.get("charge", {}).get("accrued", 0)
-            for item in data
-            if item.get("checked")
-        )
+        return {
+            "balance": data.get("amount", 0.0),
+            "bill_id": data.get("id"),
+        }
+
+    async def get_bill_uuid(self, account_id: int, bill_id: str) -> str:
+        """Fetch the UUID for a specific bill."""
+        url = self.BILL_UUID_URL.format(account_id=account_id, bill_id=bill_id)
+        data = await self._api_request("get", url)
+        return data
+
+    async def download_bill_pdf(self, uuid: str) -> bytes:
+        """Download the bill PDF using the UUID."""
+        url = self.FILE_URL.format(uuid=uuid)
+        response = await self._api_request("get", url)
+        return response
 
     async def get_meters_info(self, account_id: int) -> dict[str, Any]:
         """Fetch meters information for a given account ID."""

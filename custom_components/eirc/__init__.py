@@ -8,13 +8,24 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 import homeassistant.helpers.entity_registry as er
 
-from .const import ATTR_ENTITY_ID, ATTR_READINGS, DOMAIN, SERVICE_SEND_METER_READING
+from .const import (
+    ATTR_ENTITY_ID,
+    ATTR_READINGS,
+    DOMAIN,
+    SERVICE_SEND_METER_READING,
+    SERVICE_DOWNLOAD_BILL,
+    ATTR_ACCOUNT_ID,
+    ATTR_BILL_ID,
+)
 from .coordinator import EircDataUpdateCoordinator
+
+import os
+from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +45,13 @@ SEND_METER_READING_SCHEMA = vol.Schema(
                 )
             ],
         ),
+    }
+)
+
+DOWNLOAD_BILL_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ACCOUNT_ID): cv.string,
+        vol.Required(ATTR_BILL_ID): cv.string,
     }
 )
 
@@ -61,6 +79,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         schema=SEND_METER_READING_SCHEMA,
     )
 
+    async def handle_download_bill(call: ServiceCall) -> ServiceResponse:
+        """Handle the service call to download a bill."""
+        return await async_download_bill(hass, call)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DOWNLOAD_BILL,
+        handle_download_bill,
+        schema=DOWNLOAD_BILL_SCHEMA,
+        supports_response=vol.Schema(
+            {
+                vol.Required("url"): cv.string,
+                vol.Required("filepath"): cv.string,
+            }
+        ),
+    )
+
     return True
 
 
@@ -69,6 +104,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
         hass.services.async_remove(DOMAIN, SERVICE_SEND_METER_READING)
+        hass.services.async_remove(DOMAIN, SERVICE_DOWNLOAD_BILL)
     return unload_ok
 
 
@@ -139,3 +175,41 @@ async def async_send_meter_reading(hass: HomeAssistant, call: ServiceCall):
     except Exception as err:
         _LOGGER.error(f"Error sending meter readings: {err}")
         raise HomeAssistantError(f"Failed to send meter readings: {err}") from err
+
+
+async def async_download_bill(
+    hass: HomeAssistant, call: ServiceCall
+) -> ServiceResponse:
+    """Download bill PDF and save it to www dir"""
+    account_id = call.data[ATTR_ACCOUNT_ID]
+    bill_id = call.data[ATTR_BILL_ID]
+
+    for entry_id, coordinator in hass.data[DOMAIN].items():
+        accounts = coordinator.data
+        for tenancy_id, account_data in accounts.items():
+            if str(account_data.get("id")) == account_id:
+                client = coordinator.client
+                break
+        else:
+            continue
+        break
+    else:
+        raise HomeAssistantError(f"Account {account_id} not found")
+
+    try:
+        uuid = await client.get_bill_uuid(account_id, bill_id)
+        pdf_data = await client.download_bill_pdf(uuid)
+        www_dir = hass.config.path("www")
+        bills_dir = os.path.join(www_dir, "eirc_bills")
+        os.makedirs(bills_dir, exist_ok=True)
+        filename = f"bill_{account_id}_{bill_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filepath = os.path.join(bills_dir, filename)
+        await hass.async_add_executor_job(lambda: open(filepath, "wb").write(pdf_data))
+
+        local_url = f"/local/eirc_bills/{filename}"
+        _LOGGER.info("Bill downloaded and saved to %s", filepath)
+        return {"url": local_url, "filepath": filepath}
+
+    except Exception as err:
+        _LOGGER.error(f"Error downloading bill: {err}")
+        raise HomeAssistantError(f"Failed to download bill: {err}") from err

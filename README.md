@@ -1,5 +1,4 @@
-Интеграция личного кабинета единого информационно-расчетного центра Санкт-Петербурга с Home Assistant
-==================================================
+# Интеграция личного кабинета единого информационно-расчетного центра Санкт-Петербурга с Home Assistant
 
 > Предоставление информации о текущем состоянии лицевых счетов и связанных с ними счетчиков в Home Assistant
 >
@@ -10,7 +9,6 @@
 1. В HACS добавить [пользовательский репозиторий](https://hacs.xyz/docs/faq/custom_repositories/)
 2. Пройти процедуру аутентификации используя учетные данные [личного кабинета ЕИРЦ](https://ikus.pesc.ru/): телефон в формате +78001234567 и пароль
 3. Выберите необходимые учетные записи. Вложенные в них счетчики будут добавлены автоматически
-
 
 ## Отправка показаний
 
@@ -54,6 +52,62 @@ data:
       value: 789
     - scale_id: 3 # Ночные показания
       value: 789
+```
+
+## Загрузка счетов
+
+Интеграция позволяет загружать текущие счета в формате PDF. Счета сохраняются в директорию `www` Home Assistant и доступны по локальному URL.
+
+### Сервис `eirc.download_bill`
+
+Необходимые данные:
+
+- `account_id` ID учетной записи (можно найти в атрибутах сенсора баланса)
+- `bill_id` ID счета (можно найти в атрибутах сенсора баланса)
+
+Пример вызова сервиса:
+
+```yaml
+action: eirc.download_bill
+data:
+  account_id: "123456"
+  bill_id: "251171100214286"
+```
+
+Сервис возвращает:
+
+- `url` локальный URL для доступа к PDF (например, `/local/eirc_bills/bill_123456_251171100214286_20251228_101750.pdf`)
+- `filepath` полный путь к файлу на диске
+
+### Автоматизация отправки счетов
+
+Можно настроить автоматизацию для автоматической загрузки и отправки счетов, например, при изменении баланса:
+
+```yaml
+alias: "Отправка счета при изменении баланса"
+triggers:
+  - entity_id: sensor.eirc_account
+    attribute: native_value
+    trigger: state
+conditions:
+  - condition: template
+    value_template: "{{ trigger.to_state.state != trigger.from_state.state }}"
+actions:
+  - data:
+      account_id: "{{ state_attr('sensor.eirc_account', 'account_id') }}"
+      bill_id: "{{ state_attr('sensor.eirc_account', 'bill_id') }}"
+    response_variable: bill_response
+    action: eirc.download_bill
+  - data:
+      file: "{{ bill_response.filepath }}"
+      caption: >-
+        Новый счет для учетной записи '{{ state_attr('sensor.eirc_account',
+        'friendly_name') }}'. Баланс: {{ states('sensor.eirc_account') }}
+      target:
+        - "CHAT_ID"
+      parse_mode: plain_text
+    action: telegram_bot.send_document
+mode: single
 ```
 
 ## Отдалдка
