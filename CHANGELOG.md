@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.1...v1.2.2) (2026-01-29)
+
+
+### Bug Fixes
+
+* **eirc:** ошибка в обновлении данных одной учетной записи теперь не ведет к ошибки операции обновления целиком ([f2c766a](https://github.com/StanislavBolshakov/ha-eirc/commit/f2c766a2fc60afe1d939e018e0ffd962791e9cdf))
+
 ## [1.2.1](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.0...v1.2.1) (2026-01-29)
 
 
