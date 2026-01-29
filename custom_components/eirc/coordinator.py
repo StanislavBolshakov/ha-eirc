@@ -4,8 +4,8 @@ from datetime import timedelta
 import logging
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.config_entries import ConfigEntryAuthFailed
 
 from .api import EIRCApiClient, EircApiClientError, TwoFactorAuthRequired
 from .const import DOMAIN, CONF_SESSION_COOKIE, CONF_TOKEN_AUTH, CONF_TOKEN_VERIFY
@@ -49,6 +49,7 @@ class EircDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             accounts = await self.client.get_accounts()
             processed_data = {}
+            failed_accounts = []
 
             for account in accounts:
                 if not account.get("confirmed"):
@@ -57,19 +58,68 @@ class EircDataUpdateCoordinator(DataUpdateCoordinator):
                 account_id = account["id"]
                 tenancy_id = account["tenancy"]["register"]
 
-                meters_info = await self.client.get_meters_info(account_id)
-                balance_data = await self.client.get_account_balance(account_id)
+                try:
+                    # Fetch data for this account
+                    meters_info = await self.client.get_meters_info(account_id)
+                    balance_data = await self.client.get_account_balance(account_id)
 
-                account["meters"] = meters_info
-                account["balance"] = balance_data["balance"]
-                account["bill_id"] = balance_data["bill_id"]
-                processed_data[tenancy_id] = account
+                    account["meters"] = meters_info
+                    account["balance"] = balance_data["balance"]
+                    account["bill_id"] = balance_data["bill_id"]
+                    processed_data[tenancy_id] = account
+
+                    _LOGGER.debug(
+                        "Successfully updated account %s (ID: %s)",
+                        tenancy_id,
+                        account_id,
+                    )
+
+                except TwoFactorAuthRequired as err:
+                    # 2FA errors should still fail the entire update
+                    _LOGGER.warning(
+                        "2FA required for account %s (ID: %s): %s",
+                        tenancy_id,
+                        account_id,
+                        err,
+                    )
+                    raise ConfigEntryAuthFailed(
+                        "Reauthentication required due to 2FA"
+                    ) from err
+
+                except (EircApiClientError, Exception) as err:
+                    # Log the error but continue processing other accounts
+                    _LOGGER.error(
+                        "Failed to update account %s (ID: %s): %s",
+                        tenancy_id,
+                        account_id,
+                        err,
+                    )
+                    failed_accounts.append(
+                        {
+                            "tenancy_id": tenancy_id,
+                            "account_id": account_id,
+                            "error": str(err),
+                        }
+                    )
 
             await self._async_save_tokens()
 
-            _LOGGER.debug(
-                "Successfully updated data for %d accounts", len(processed_data)
-            )
+            # Log summary of update results
+            if failed_accounts:
+                _LOGGER.warning(
+                    "Updated %d accounts successfully, %d accounts failed: %s",
+                    len(processed_data),
+                    len(failed_accounts),
+                    [
+                        f"{acc['tenancy_id']} ({acc['account_id']})"
+                        for acc in failed_accounts
+                    ],
+                )
+            else:
+                _LOGGER.info(
+                    "Successfully updated data for %d accounts", len(processed_data)
+                )
+
             _LOGGER.debug("EIRC coordinator data updated: %s", processed_data)
 
             return processed_data

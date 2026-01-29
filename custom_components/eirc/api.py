@@ -220,6 +220,11 @@ class EIRCApiClient:
                     await self.authenticate()
                     continue
                 if err.status in [400, 429, 500, 503]:
+                    try:
+                        response_text = await err.response.text()
+                        _LOGGER.debug("Error response body: %s", response_text)
+                    except Exception as e:
+                        _LOGGER.debug("Could not read 500 response body: %s", e)
                     _LOGGER.warning(
                         "API error %d. Retrying in %d seconds (attempt %d/%d).",
                         err.status,
