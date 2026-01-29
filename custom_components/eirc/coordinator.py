@@ -59,7 +59,6 @@ class EircDataUpdateCoordinator(DataUpdateCoordinator):
                 tenancy_id = account["tenancy"]["register"]
 
                 try:
-                    # Fetch data for this account
                     meters_info = await self.client.get_meters_info(account_id)
                     balance_data = await self.client.get_account_balance(account_id)
 
@@ -75,7 +74,6 @@ class EircDataUpdateCoordinator(DataUpdateCoordinator):
                     )
 
                 except TwoFactorAuthRequired as err:
-                    # 2FA errors should still fail the entire update
                     _LOGGER.warning(
                         "2FA required for account %s (ID: %s): %s",
                         tenancy_id,
@@ -87,7 +85,6 @@ class EircDataUpdateCoordinator(DataUpdateCoordinator):
                     ) from err
 
                 except (EircApiClientError, Exception) as err:
-                    # Log the error but continue processing other accounts
                     _LOGGER.error(
                         "Failed to update account %s (ID: %s): %s",
                         tenancy_id,
@@ -104,7 +101,6 @@ class EircDataUpdateCoordinator(DataUpdateCoordinator):
 
             await self._async_save_tokens()
 
-            # Log summary of update results
             if failed_accounts:
                 _LOGGER.warning(
                     "Updated %d accounts successfully, %d accounts failed: %s",
