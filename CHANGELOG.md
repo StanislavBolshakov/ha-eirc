@@ -1,3 +1,10 @@
+## [1.2.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.2...v1.2.3) (2026-07-27)
+
+
+### Bug Fixes
+
+* **ha-eirc:** наименование счетчика больше не полагается на нестабильный subserviceid ([9c7267e](https://github.com/StanislavBolshakov/ha-eirc/commit/9c7267e43c063620df5796165236832b8e84f893))
+
 ## [1.2.2](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.1...v1.2.2) (2026-01-29)
 
 
