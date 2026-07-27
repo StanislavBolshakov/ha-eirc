@@ -118,7 +118,7 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
             f"eirc_meter_{self._tenancy_id}_{self._meter_reg_id}_{self._scale_id}"
         )
 
-        if meter_data.get("subserviceId") == 54179:
+        if meter_data.get("subservice", {}).get("utility") == "ELECTRICITY":
             self._attr_name = (
                 f"Электроэнергия {indication_data.get('scaleName', 'Unknown')} "
                 f"({meter_data['id']['registration']})"
