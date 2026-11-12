@@ -1,3 +1,10 @@
+## [1.2.4](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.3...v1.2.4) (2026-11-12)
+
+
+### Bug Fixes
+
+* **eirc:** исправлены сбои обновления, настройки и сервисы ([2072258](https://github.com/StanislavBolshakov/ha-eirc/commit/20722582c91018e191235ab423d6a7f5b9757fd4))
+
 ## [1.2.3](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.2...v1.2.3) (2026-07-27)
 
 
