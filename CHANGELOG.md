@@ -1,3 +1,10 @@
+## [1.2.5](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.4...v1.2.5) (2026-11-12)
+
+
+### Bug Fixes
+
+* **eirc:** исправлена установка через HACS ([48c173e](https://github.com/StanislavBolshakov/ha-eirc/commit/48c173e2fa4f1a9adaf1e492b3870173e6547ae8))
+
 ## [1.2.4](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.3...v1.2.4) (2026-11-12)
 
 
