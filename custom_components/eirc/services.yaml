@@ -11,7 +11,6 @@ send_meter_reading:
           filter:
             domain: sensor
             integration: eirc
-            device_class: meter
     readings:
       description: List of meter readings to send
       required: true

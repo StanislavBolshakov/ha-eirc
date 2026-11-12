@@ -1,14 +1,14 @@
 """API client for EIRC integration."""
 
 import asyncio
-from json import JSONDecodeError
 import logging
+from json import JSONDecodeError
 from typing import Any, Self
+from urllib.parse import quote, urlparse
 
 import aiohttp
 from aiohttp import ClientResponseError, ClientSession
 from aiohttp.client_exceptions import ContentTypeError
-
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -21,10 +21,27 @@ MAX_RETRIES = 5
 INITIAL_BACKOFF = 4
 BACKOFF_MULTIPLIER = 2
 REQUEST_TIMEOUT = 30
+API_REQUEST_TIMEOUT = 45
 
 
 class EircApiClientError(HomeAssistantError):
     """Base exception for EIRC API client errors."""
+
+
+class EircApiResponseError(EircApiClientError):
+    """An HTTP error without response bodies, credentials or account URLs."""
+
+    def __init__(self, status: int, code: str | None = None) -> None:
+        self.status = status
+        self.code = code
+        message = f"API request failed with status {status}"
+        if code:
+            message += f" (EIRC code {code})"
+        super().__init__(message)
+
+
+class EircAuthenticationError(EircApiClientError):
+    """Authentication still fails after one attempt to renew the session."""
 
 
 class MaxRetriesExceededError(EircApiClientError):
@@ -108,8 +125,6 @@ class EIRCApiClient:
         if not url:
             return False
 
-        from urllib.parse import urlparse
-
         parsed = urlparse(url)
 
         if not parsed.scheme or parsed.scheme not in ("http", "https"):
@@ -172,7 +187,13 @@ class EIRCApiClient:
             _LOGGER.debug("%s via proxy: %s", action, self._proxy)
 
     async def _execute_request(
-        self, method: str, url: str, headers: dict[str, str], **kwargs: Any
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        *,
+        raw: bool = False,
+        **kwargs: Any,
     ) -> Any:
         """Execute a single HTTP request with consistent handling."""
         self._log_proxy_debug(f"Making {method.upper()} request")
@@ -182,9 +203,23 @@ class EIRCApiClient:
         async with self._get_session.request(
             method, url, headers=headers, proxy=self._proxy, timeout=timeout, **kwargs
         ) as resp:
-            resp.raise_for_status()
+            if resp.status >= 400:
+                # Read while the response is open. ClientResponseError has no
+                # response attribute. Only retain a numeric business error code:
+                # arbitrary server messages/bodies can contain personal data.
+                code = None
+                try:
+                    data = await resp.json()
+                    value = str(data.get("code", "")) if isinstance(data, dict) else ""
+                    if value.isascii() and value.isdecimal() and len(value) <= 16:
+                        code = value
+                except (JSONDecodeError, ContentTypeError, UnicodeDecodeError):
+                    pass
+                raise EircApiResponseError(resp.status, code)
             if resp.status == 204:
                 return None
+            if raw:
+                return await resp.read()
             try:
                 return await resp.json()
             except (JSONDecodeError, ContentTypeError):
@@ -194,9 +229,20 @@ class EIRCApiClient:
                     return await resp.read()
 
     async def _api_request(self, method: str, url: str, **kwargs: Any) -> Any:
+        """Bound the entire request, including retries and authentication."""
+        try:
+            async with asyncio.timeout(API_REQUEST_TIMEOUT):
+                return await self._request_with_retries(method, url, **kwargs)
+        except TimeoutError as err:
+            raise EircApiClientError("API request time budget exceeded") from err
+
+    async def _request_with_retries(self, method: str, url: str, **kwargs: Any) -> Any:
         """Make a resilient API request with retry and re-authentication."""
         retries = 0
         backoff_time = INITIAL_BACKOFF
+        reauthenticated = False
+        # A failed write may already have been accepted by the server.
+        can_retry = method.lower() in ("get", "head")
 
         if not self._session_cookie:
             await self._fetch_session_cookie()
@@ -206,56 +252,54 @@ class EIRCApiClient:
                 headers = self._craft_headers()
                 return await self._execute_request(method, url, headers, **kwargs)
 
-            except ClientResponseError as err:
-                if err.status == 401 and url != self.AUTH_URL:
-                    _LOGGER.warning(f"Received {err.status}. Re-authenticating.")
+            except EircApiResponseError as err:
+                if err.status in (401, 403) and url != self.AUTH_URL:
+                    if reauthenticated:
+                        raise EircAuthenticationError(
+                            "API rejected the renewed session"
+                        ) from err
+                    reauthenticated = True
+                    _LOGGER.warning("Received %d. Re-authenticating once.", err.status)
                     self._token_auth = None
+                    if err.status == 403:
+                        self._token_verify = None
+                        self._session_cookie = None
                     await self.authenticate()
                     continue
-                if err.status == 403 and url != self.AUTH_URL:
-                    _LOGGER.warning(f"Received {err.status}. Re-authenticating.")
-                    self._token_auth = None
-                    self._token_verify = None
-                    self._session_cookie = None
-                    await self.authenticate()
-                    continue
-                if err.status in [400, 429, 500, 503]:
-                    try:
-                        response_text = await err.response.text()
-                        _LOGGER.debug("Error response body: %s", response_text)
-                    except Exception as e:
-                        _LOGGER.debug("Could not read 500 response body: %s", e)
+                if can_retry and err.status in (429, 500, 502, 503, 504):
+                    retries += 1
+                    if retries >= MAX_RETRIES:
+                        raise MaxRetriesExceededError(
+                            f"API read retries exhausted (status {err.status})"
+                        ) from err
                     _LOGGER.warning(
                         "API error %d. Retrying in %d seconds (attempt %d/%d).",
                         err.status,
                         backoff_time,
-                        retries + 1,
+                        retries,
                         MAX_RETRIES,
                     )
                     await asyncio.sleep(backoff_time)
                     backoff_time *= BACKOFF_MULTIPLIER
-                    retries += 1
                 else:
-                    raise EircApiClientError(
-                        f"API request failed with status {err.status}"
-                    ) from err
+                    raise
 
-            except asyncio.TimeoutError as err:
+            except (TimeoutError, aiohttp.ClientConnectionError) as err:
+                retries += 1
+                if not can_retry or retries >= MAX_RETRIES:
+                    raise EircApiClientError(
+                        "API connection failed or timed out"
+                    ) from err
                 _LOGGER.warning(
-                    "Request timeout. Retrying in %d seconds (attempt %d/%d).",
+                    "API connection failed. Retrying in %d seconds (attempt %d/%d).",
                     backoff_time,
-                    retries + 1,
+                    retries,
                     MAX_RETRIES,
                 )
                 await asyncio.sleep(backoff_time)
                 backoff_time *= BACKOFF_MULTIPLIER
-                retries += 1
 
-            except Exception:
-                _LOGGER.exception("Unexpected error in _api_request")
-                raise
-
-        raise MaxRetriesExceededError(f"Max retries reached for API call to {url}")
+        raise MaxRetriesExceededError("API read retries exhausted")
 
     async def _simple_post(self, url: str, payload: dict | None = None) -> Any:
         """Perform a simple POST that EXPECTS a JSON response."""
@@ -286,7 +330,7 @@ class EIRCApiClient:
             self._log_proxy_debug("Fetching session cookie")
 
             jar = self._get_session.cookie_jar
-            jar.clear()
+            jar.clear_domain(urlparse(self.COOKIE_URL).hostname)
             self._session_cookie = None
 
             timeout = aiohttp.ClientTimeout(total=self._REQUEST_TIMEOUT)
@@ -298,19 +342,16 @@ class EIRCApiClient:
                 if self._COOKIE_NAME not in resp.cookies:
                     _LOGGER.error(
                         "Session cookie missing from response. Available cookies: %s, "
-                        "Status: %s, Headers: %s",
+                        "Status: %s",
                         list(resp.cookies.keys()),
                         resp.status,
-                        dict(resp.headers),
                     )
                     raise MissingSessionCookieError(
                         f"Cookie '{self._COOKIE_NAME}' not in response"
                     )
 
                 self._session_cookie = resp.cookies[self._COOKIE_NAME].value
-                _LOGGER.debug(
-                    "Session cookie fetched successfully: %s", self._session_cookie
-                )
+                _LOGGER.debug("Session cookie fetched successfully")
 
         except ClientResponseError as err:
             _LOGGER.error("HTTP error fetching session cookie: %s", err)
@@ -356,7 +397,11 @@ class EIRCApiClient:
                 _LOGGER.debug("Authentication successful.")
 
         except ClientResponseError as err:
-            raise EircApiClientError(f"Authentication failed: {err}") from err
+            if err.status in (401, 403):
+                raise EircAuthenticationError("EIRC authentication failed") from err
+            raise EircApiClientError(
+                f"Authentication failed with status {err.status}"
+            ) from err
 
     async def twofa_authentication(
         self, transaction_id: str, code: str
@@ -401,40 +446,77 @@ class EIRCApiClient:
 
     async def get_accounts(self) -> list[dict[str, Any]]:
         """Fetch all accounts from the API."""
-        return await self._api_request("get", self.ACCOUNTS_URL)
+        data = await self._api_request("get", self.ACCOUNTS_URL)
+        if not isinstance(data, list) or any(
+            not isinstance(account, dict)
+            or (
+                account.get("confirmed")
+                and (
+                    "id" not in account
+                    or not isinstance(account.get("tenancy"), dict)
+                    or "register" not in account["tenancy"]
+                )
+            )
+            for account in data
+        ):
+            raise EircApiClientError("Unexpected accounts response structure")
+        return data
 
     async def get_account_balance(self, account_id: int) -> dict[str, Any]:
         """Fetch the account balance and bill ID for a given account ID."""
         url = self.CURRENT_BILL_URL.format(account_id=account_id)
         data = await self._api_request("get", url)
+        if not isinstance(data, dict) or "amount" not in data:
+            raise EircApiClientError("Unexpected current bill response structure")
         return {
-            "balance": data.get("amount", 0.0),
+            "balance": data["amount"],
             "bill_id": data.get("id"),
         }
 
     async def get_bill_uuid(self, account_id: int, bill_id: str) -> str:
         """Fetch the UUID for a specific bill."""
-        url = self.BILL_UUID_URL.format(account_id=account_id, bill_id=bill_id)
+        url = self.BILL_UUID_URL.format(
+            account_id=account_id, bill_id=quote(str(bill_id), safe="")
+        )
         data = await self._api_request("get", url)
         return data
 
     async def download_bill_pdf(self, uuid: str) -> bytes:
         """Download the bill PDF using the UUID."""
         url = self.FILE_URL.format(uuid=uuid)
-        response = await self._api_request("get", url)
+        response = await self._api_request("get", url, raw=True)
+        if not isinstance(response, bytes) or not response.startswith(b"%PDF-"):
+            raise EircApiClientError("Unexpected bill PDF response")
         return response
 
-    async def get_meters_info(self, account_id: int) -> dict[str, Any]:
+    async def get_meters_info(self, account_id: int) -> list[dict[str, Any]]:
         """Fetch meters information for a given account ID."""
         url = self.METERS_INFO_URL.format(account_id=account_id)
-        return await self._api_request("get", url)
+        data = await self._api_request("get", url)
+        if not isinstance(data, list):
+            raise EircApiClientError("Unexpected meters response structure")
+        for meter in data:
+            if (
+                not isinstance(meter, dict)
+                or not isinstance(meter.get("id"), dict)
+                or "registration" not in meter["id"]
+                or not isinstance(meter.get("indications"), list)
+                or any(
+                    not isinstance(indication, dict) or "meterScaleId" not in indication
+                    for indication in meter["indications"]
+                )
+            ):
+                raise EircApiClientError("Unexpected meter response structure")
+        # Validate only: never normalize or rename fields from EIRC.
+        return data
 
     async def send_meter_reading(
         self, account_id: int, meter_registration: str, readings: list[dict]
     ) -> None:
         """Send meter readings to the API."""
         url = self.SEND_METER_READING_URL.format(
-            account_id=account_id, meter_registration=meter_registration
+            account_id=account_id,
+            meter_registration=quote(str(meter_registration), safe=""),
         )
         await self._api_request("post", url, json=readings)
         _LOGGER.debug(

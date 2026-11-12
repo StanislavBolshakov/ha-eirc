@@ -1,12 +1,13 @@
 """Sensor platform for the EIRC integration."""
 
 from __future__ import annotations
+
 import logging
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -26,29 +27,38 @@ async def async_setup_entry(
     """Set up EIRC sensors from a config entry."""
     coordinator: EircDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    selected_tenancies = entry.data.get("selected_accounts", [])
+    selected_tenancies = entry.options.get(
+        "selected_accounts", entry.data.get("selected_accounts", [])
+    )
 
-    if not coordinator.data:
-        _LOGGER.warning("No data from coordinator; skipping sensor setup.")
-        return
+    known_ids = set()
 
-    sensors_to_add = []
+    @callback
+    def add_new_sensors() -> None:
+        """Also discover meters which recover after a failed first refresh."""
+        sensors_to_add = []
+        for account_data in (coordinator.data or {}).values():
+            tenancy_id = account_data["tenancy"]["register"]
+            if tenancy_id not in selected_tenancies:
+                continue
 
-    for account_data in coordinator.data.values():
-        tenancy_id = account_data["tenancy"]["register"]
-        if tenancy_id not in selected_tenancies:
-            continue
+            candidates = [EIRCSensor(coordinator, account_data)]
+            for meter in account_data.get("meters", []):
+                for indication in meter["indications"]:
+                    candidates.append(
+                        EIRCMeterSensor(coordinator, account_data, meter, indication)
+                    )
+            for sensor in candidates:
+                if sensor.unique_id not in known_ids:
+                    known_ids.add(sensor.unique_id)
+                    sensors_to_add.append(sensor)
 
-        sensors_to_add.append(EIRCSensor(coordinator, account_data))
+        if sensors_to_add:
+            _LOGGER.debug("Adding %d EIRC sensors", len(sensors_to_add))
+            async_add_entities(sensors_to_add)
 
-        for meter in account_data.get("meters", []):
-            for indication in meter["indications"]:
-                sensors_to_add.append(
-                    EIRCMeterSensor(coordinator, account_data, meter, indication)
-                )
-
-    _LOGGER.debug("Adding %d EIRC sensors", len(sensors_to_add))
-    async_add_entities(sensors_to_add)
+    add_new_sensors()
+    entry.async_on_unload(coordinator.async_add_listener(add_new_sensors))
 
 
 class EIRCSensor(CoordinatorEntity, SensorEntity):
@@ -70,6 +80,15 @@ class EIRCSensor(CoordinatorEntity, SensorEntity):
             "name": account_data.get("alias", f"EIRC {self._tenancy_id}"),
             "manufacturer": "ЕИРЦ Санкт-Петербург",
         }
+
+    @property
+    def available(self) -> bool:
+        """Do not expose a cached balance as a successful update."""
+        return (
+            super().available
+            and self._tenancy_id in (self.coordinator.data or {})
+            and self._tenancy_id not in self.coordinator.failed_balances
+        )
 
     @property
     def native_value(self):
@@ -143,6 +162,14 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
                     if indication["meterScaleId"] == self._scale_id:
                         return account_data, meter, indication
         return account_data, None, None
+
+    @property
+    def available(self) -> bool:
+        """Keep entity IDs, but mark stale or removed readings unavailable."""
+        if not super().available or self._tenancy_id in self.coordinator.failed_meters:
+            return False
+        _, _, indication = self._get_current_data()
+        return indication is not None
 
     @property
     def native_value(self):

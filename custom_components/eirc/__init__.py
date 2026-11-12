@@ -3,29 +3,33 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote
 
+import homeassistant.helpers.entity_registry as er
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
-import homeassistant.helpers.entity_registry as er
 
 from .const import (
+    ATTR_ACCOUNT_ID,
+    ATTR_BILL_ID,
     ATTR_ENTITY_ID,
     ATTR_READINGS,
     DOMAIN,
-    SERVICE_SEND_METER_READING,
     SERVICE_DOWNLOAD_BILL,
-    ATTR_ACCOUNT_ID,
-    ATTR_BILL_ID,
+    SERVICE_SEND_METER_READING,
 )
 from .coordinator import EircDataUpdateCoordinator
-
-import os
-from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,44 +71,48 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     async def handle_send_meter_reading(call: ServiceCall):
         """Handle the service call to send meter readings."""
         await async_send_meter_reading(hass, call)
 
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SEND_METER_READING,
-        handle_send_meter_reading,
-        schema=SEND_METER_READING_SCHEMA,
-    )
+    if not hass.services.has_service(DOMAIN, SERVICE_SEND_METER_READING):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SEND_METER_READING,
+            handle_send_meter_reading,
+            schema=SEND_METER_READING_SCHEMA,
+        )
 
     async def handle_download_bill(call: ServiceCall) -> ServiceResponse:
         """Handle the service call to download a bill."""
         return await async_download_bill(hass, call)
 
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_DOWNLOAD_BILL,
-        handle_download_bill,
-        schema=DOWNLOAD_BILL_SCHEMA,
-        supports_response=vol.Schema(
-            {
-                vol.Required("url"): cv.string,
-                vol.Required("filepath"): cv.string,
-            }
-        ),
-    )
+    if not hass.services.has_service(DOMAIN, SERVICE_DOWNLOAD_BILL):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_DOWNLOAD_BILL,
+            handle_download_bill,
+            schema=DOWNLOAD_BILL_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
 
     return True
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload after HA has saved the new options."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
-        hass.services.async_remove(DOMAIN, SERVICE_SEND_METER_READING)
-        hass.services.async_remove(DOMAIN, SERVICE_DOWNLOAD_BILL)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        if not hass.data[DOMAIN]:
+            hass.services.async_remove(DOMAIN, SERVICE_SEND_METER_READING)
+            hass.services.async_remove(DOMAIN, SERVICE_DOWNLOAD_BILL)
     return unload_ok
 
 
@@ -184,9 +192,9 @@ async def async_download_bill(
     account_id = call.data[ATTR_ACCOUNT_ID]
     bill_id = call.data[ATTR_BILL_ID]
 
-    for entry_id, coordinator in hass.data[DOMAIN].items():
-        accounts = coordinator.data
-        for tenancy_id, account_data in accounts.items():
+    for coordinator in hass.data[DOMAIN].values():
+        accounts = coordinator.data or {}
+        for account_data in accounts.values():
             if str(account_data.get("id")) == account_id:
                 client = coordinator.client
                 break
@@ -200,11 +208,17 @@ async def async_download_bill(
         uuid = await client.get_bill_uuid(account_id, bill_id)
         pdf_data = await client.download_bill_pdf(uuid)
         www_dir = hass.config.path("www")
-        bills_dir = os.path.join(www_dir, "eirc_bills")
-        os.makedirs(bills_dir, exist_ok=True)
-        filename = f"bill_{account_id}_{bill_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        filepath = os.path.join(bills_dir, filename)
-        await hass.async_add_executor_job(lambda: open(filepath, "wb").write(pdf_data))
+        safe_account_id = quote(str(account_id), safe="")
+        safe_bill_id = quote(str(bill_id), safe="")
+        filename = f"bill_{safe_account_id}_{safe_bill_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+
+        def save_bill() -> str:
+            path = Path(www_dir) / "eirc_bills" / filename
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(pdf_data)
+            return str(path)
+
+        filepath = await hass.async_add_executor_job(save_bill)
 
         local_url = f"/local/eirc_bills/{filename}"
         _LOGGER.info("Bill downloaded and saved to %s", filepath)

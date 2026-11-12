@@ -8,35 +8,39 @@ from urllib.parse import urlparse
 
 import aiohttp
 import voluptuous as vol
-
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntryAuthFailed
 from homeassistant.core import callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import config_validation as cv
 
-from .api import EIRCApiClient, TwoFactorAuthRequired
+from .api import (
+    EIRCApiClient,
+    EircApiClientError,
+    EircAuthenticationError,
+    TwoFactorAuthRequired,
+)
 from .const import (
-    CONF_USERNAME,
     CONF_PASSWORD,
-    CONF_SELECTED_ACCOUNTS,
-    CONF_USE_PROXY,
     CONF_PROXY_URL,
+    CONF_SELECTED_ACCOUNTS,
     CONF_SESSION_COOKIE,
     CONF_TOKEN_AUTH,
     CONF_TOKEN_VERIFY,
+    CONF_USE_PROXY,
+    CONF_USERNAME,
     DOMAIN,
-    ERROR_INVALID_AUTH,
-    ERROR_CANNOT_CONNECT,
-    ERROR_INVALID_PROXY_URL,
-    ERROR_PROXY_URL_REQUIRED,
-    ERROR_INVALID_CODE,
-    ERROR_NO_VALID_ACCOUNTS,
     ERROR_2FA_METHOD_NOT_SUPPORTED,
     ERROR_2FA_SEND_FAILED,
+    ERROR_CANNOT_CONNECT,
+    ERROR_CANNOT_FETCH_ACCOUNTS,
     ERROR_ENTRY_NOT_FOUND,
+    ERROR_INVALID_AUTH,
+    ERROR_INVALID_CODE,
+    ERROR_INVALID_PROXY_URL,
+    ERROR_NO_VALID_ACCOUNTS,
+    ERROR_PROXY_URL_REQUIRED,
     ERROR_REAUTH_SUCCESSFUL,
     ERROR_UNKNOWN,
-    ERROR_CANNOT_FETCH_ACCOUNTS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -98,7 +102,7 @@ class EIRCCommonFlowMixin:
         if isinstance(error, TwoFactorAuthRequired):
             return None
 
-        if isinstance(error, ConfigEntryAuthFailed):
+        if isinstance(error, (ConfigEntryAuthFailed, EircAuthenticationError)):
             _LOGGER.warning("Authentication failed for user: %s", username)
             return {"base": ERROR_INVALID_AUTH}
 
@@ -112,6 +116,9 @@ class EIRCCommonFlowMixin:
                 error.status,
                 username,
             )
+            return {"base": ERROR_CANNOT_CONNECT}
+
+        if isinstance(error, EircApiClientError):
             return {"base": ERROR_CANNOT_CONNECT}
 
         _LOGGER.exception("Unexpected error during authentication")
@@ -234,7 +241,14 @@ class EIRCConfigFlow(config_entries.ConfigFlow, EIRCCommonFlowMixin, domain=DOMA
             CONF_PROXY_URL: self._proxy_url,
         }
 
-        self.hass.config_entries.async_update_entry(entry, data=new_data)
+        new_options = {
+            **entry.options,
+            CONF_USE_PROXY: self._use_proxy,
+            CONF_PROXY_URL: self._proxy_url,
+        }
+        self.hass.config_entries.async_update_entry(
+            entry, data=new_data, options=new_options
+        )
         await self.hass.config_entries.async_reload(entry.entry_id)
         _LOGGER.debug("Reauthentication successful for user: %s", self._username)
         return self.async_abort(reason=ERROR_REAUTH_SUCCESSFUL)
@@ -314,6 +328,11 @@ class EIRCConfigFlow(config_entries.ConfigFlow, EIRCCommonFlowMixin, domain=DOMA
         """Confirm reauthentication."""
         if user_input is None:
             entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+            if not entry:
+                return self.async_abort(reason=ERROR_ENTRY_NOT_FOUND)
+            settings = {**entry.data, **entry.options}
+            self._use_proxy = settings.get(CONF_USE_PROXY, False)
+            self._proxy_url = settings.get(CONF_PROXY_URL)
             return self.async_show_form(step_id="reauth_confirm")
         return await self.async_step_user()
 
@@ -401,12 +420,7 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow, EIRCCommonFlowMixin):
                 CONF_PROXY_URL: self._proxy_url,
             }
 
-            self.hass.config_entries.async_update_entry(
-                self.config_entry, options=new_options
-            )
-
-            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-            return self.async_create_entry(title="", data={})
+            return self.async_create_entry(title="", data=new_options)
 
         return self._show_options_form(errors={}, show_proxy_url=self._use_proxy)
 

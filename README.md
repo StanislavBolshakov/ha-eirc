@@ -110,6 +110,13 @@ actions:
 mode: single
 ```
 
+## Тесты
+
+```sh
+python -m pip install aiohttp
+python -m unittest discover -s tests -v
+```
+
 ## Отдалдка
 
 ```yaml
