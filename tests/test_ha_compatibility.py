@@ -156,6 +156,20 @@ class HACompatibilityTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_import_deprecations(self):
         self.assertEqual(self.import_warnings, [])
 
+    async def test_marketplace_accepts_repository_manifest(self):
+        import json
+
+        from homeassistant.components.marketplace.repositories.base import (
+            RepositoryManifest,
+        )
+
+        root = Path(__file__).resolve().parents[1]
+        data = json.loads((root / "hacs.json").read_text(encoding="utf-8"))
+        manifest = RepositoryManifest.from_dict(data)
+        self.assertEqual(manifest.name, "EIRC Integration")
+        self.assertFalse(manifest.content_in_root)
+        self.assertFalse(manifest.zip_release)
+
     async def test_first_refresh_and_sensor_creation(self):
         entry = self.entry()
         coordinator = await self.setup(entry)

@@ -3,6 +3,7 @@
   "name": "EIRC Integration",
   "version": "1.2.4",
   "documentation": "https://github.com/StanislavBolshakov/ha-eirc",
+  "issue_tracker": "https://github.com/StanislavBolshakov/ha-eirc/issues",
   "requirements": ["aiohttp"],
   "codeowners": ["@StanislavBolshakov"],
   "config_flow": true,
