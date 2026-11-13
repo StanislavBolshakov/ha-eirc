@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.5...v1.3.0) (2026-11-13)
+
+
+### Features
+
+* **eirc:** добавлены форма передачи показаний и обезличенная диагностика ([08e83b1](https://github.com/StanislavBolshakov/ha-eirc/commit/08e83b1e8da9b77634655b8c9b420119604605b4))
+
 ## [1.2.5](https://github.com/StanislavBolshakov/ha-eirc/compare/v1.2.4...v1.2.5) (2026-11-12)
 
 
