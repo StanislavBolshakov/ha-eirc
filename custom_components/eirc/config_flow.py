@@ -13,9 +13,11 @@ from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import config_validation as cv
 
+from . import async_request_reload
 from .api import (
     EIRCApiClient,
     EircApiClientError,
+    EircApiResponseError,
     EircAuthenticationError,
     TwoFactorAuthRequired,
 )
@@ -39,9 +41,13 @@ from .const import (
     ERROR_INVALID_PROXY_URL,
     ERROR_NO_VALID_ACCOUNTS,
     ERROR_PROXY_URL_REQUIRED,
+    ERROR_RATE_LIMITED,
+    ERROR_REAUTH_REQUIRED,
     ERROR_REAUTH_SUCCESSFUL,
+    ERROR_SESSION_EXPIRED,
     ERROR_UNKNOWN,
 )
+from .readings_flow import ReadingsFlowMixin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,19 +109,15 @@ class EIRCCommonFlowMixin:
             return None
 
         if isinstance(error, (ConfigEntryAuthFailed, EircAuthenticationError)):
-            _LOGGER.warning("Authentication failed for user: %s", username)
+            _LOGGER.warning("EIRC authentication was rejected")
             return {"base": ERROR_INVALID_AUTH}
 
-        if isinstance(error, aiohttp.ClientConnectionError):
-            _LOGGER.error("Connection error while authenticating user: %s", username)
+        if isinstance(error, (TimeoutError, aiohttp.ClientConnectionError)):
             return {"base": ERROR_CANNOT_CONNECT}
 
-        if isinstance(error, aiohttp.ClientResponseError):
-            _LOGGER.error(
-                "HTTP error %s while authenticating user: %s",
-                error.status,
-                username,
-            )
+        if isinstance(error, (aiohttp.ClientResponseError, EircApiResponseError)):
+            if error.status == 429:
+                return {"base": ERROR_RATE_LIMITED}
             return {"base": ERROR_CANNOT_CONNECT}
 
         if isinstance(error, EircApiClientError):
@@ -213,11 +215,10 @@ class EIRCConfigFlow(config_entries.ConfigFlow, EIRCCommonFlowMixin, domain=DOMA
 
         try:
             await self._client.twofa_send_email(self._transaction_id)
-            _LOGGER.debug(
-                "2FA email sent for transaction %s (methods: %s)",
-                self._transaction_id,
-                self._methods,
-            )
+            _LOGGER.debug("2FA email sent")
+        except EircApiResponseError as err:
+            reason = ERROR_RATE_LIMITED if err.status == 429 else ERROR_2FA_SEND_FAILED
+            return self.async_abort(reason=reason)
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Failed to send 2FA email")
             return self.async_abort(reason=ERROR_2FA_SEND_FAILED)
@@ -249,8 +250,8 @@ class EIRCConfigFlow(config_entries.ConfigFlow, EIRCCommonFlowMixin, domain=DOMA
         self.hass.config_entries.async_update_entry(
             entry, data=new_data, options=new_options
         )
-        await self.hass.config_entries.async_reload(entry.entry_id)
-        _LOGGER.debug("Reauthentication successful for user: %s", self._username)
+        async_request_reload(self.hass, entry)
+        _LOGGER.debug("EIRC reauthentication successful")
         return self.async_abort(reason=ERROR_REAUTH_SUCCESSFUL)
 
     async def async_step_2fa(
@@ -263,15 +264,37 @@ class EIRCConfigFlow(config_entries.ConfigFlow, EIRCCommonFlowMixin, domain=DOMA
             code = user_input["code"]
             try:
                 await self._client.twofa_authentication(self._transaction_id, code)
-                self._accounts = await self._client.get_accounts()
-
-                if self.context.get("source") == config_entries.SOURCE_REAUTH:
-                    return await self._update_reauth_entry()
-
-                return await self.async_step_account()
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Invalid 2FA code")
-                errors["base"] = ERROR_INVALID_CODE
+            except EircApiResponseError as err:
+                if err.status in (400, 406, 422):
+                    errors["base"] = ERROR_INVALID_CODE
+                elif err.status in (401, 403):
+                    errors["base"] = ERROR_SESSION_EXPIRED
+                elif err.status == 429:
+                    errors["base"] = ERROR_RATE_LIMITED
+                else:
+                    errors["base"] = ERROR_CANNOT_CONNECT
+            except (EircApiClientError, aiohttp.ClientError, TimeoutError):
+                errors["base"] = ERROR_CANNOT_CONNECT
+            except Exception:
+                _LOGGER.exception("Unexpected verification error")
+                errors["base"] = ERROR_UNKNOWN
+            else:
+                # A subsequent accounts outage is not an incorrect email code.
+                try:
+                    self._accounts = await self._client.get_accounts()
+                except TwoFactorAuthRequired as err:
+                    return await self._handle_2fa_required(err)
+                except EircAuthenticationError:
+                    errors["base"] = ERROR_SESSION_EXPIRED
+                except (EircApiClientError, aiohttp.ClientError, TimeoutError) as err:
+                    errors = self._handle_auth_error(err, self._username)
+                except Exception:
+                    _LOGGER.exception("Unexpected accounts error after verification")
+                    errors = {"base": ERROR_UNKNOWN}
+                else:
+                    if self.context.get("source") == config_entries.SOURCE_REAUTH:
+                        return await self._update_reauth_entry()
+                    return await self.async_step_account()
 
         return self.async_show_form(
             step_id="2fa",
@@ -345,7 +368,9 @@ class EIRCConfigFlow(config_entries.ConfigFlow, EIRCCommonFlowMixin, domain=DOMA
         return EIRCOptionsFlowHandler(config_entry)
 
 
-class EIRCOptionsFlowHandler(config_entries.OptionsFlow, EIRCCommonFlowMixin):
+class EIRCOptionsFlowHandler(
+    config_entries.OptionsFlow, EIRCCommonFlowMixin, ReadingsFlowMixin
+):
     """Handle options flow for the integration."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
@@ -368,14 +393,22 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow, EIRCCommonFlowMixin):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Initialize options flow."""
+        """Choose configuration or an explicit meter-reading action."""
+        return self.async_show_menu(
+            step_id="init", menu_options=["account_selection", "send_readings"]
+        )
+
+    async def _async_load_accounts(self):
         try:
             await self._fetch_accounts()
+        except (TwoFactorAuthRequired, EircAuthenticationError):
+            self.config_entry.async_start_reauth_if_available(self.hass)
+            return self.async_abort(reason=ERROR_REAUTH_REQUIRED)
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Failed to fetch accounts for options flow")
             return self.async_abort(reason=ERROR_CANNOT_FETCH_ACCOUNTS)
 
-        return await self.async_step_account_selection()
+        return None
 
     async def _fetch_accounts(self) -> None:
         """Fetch available accounts."""
@@ -394,6 +427,8 @@ class EIRCOptionsFlowHandler(config_entries.OptionsFlow, EIRCCommonFlowMixin):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Select accounts and proxy settings."""
+        if not self._accounts and (result := await self._async_load_accounts()):
+            return result
         errors: dict[str, str] = {}
 
         if user_input is not None:

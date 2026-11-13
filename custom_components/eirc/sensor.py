@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -17,6 +18,13 @@ from .coordinator import EircDataUpdateCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 EIRC_PREFIX = "eirc_"
+
+METER_ICONS = {
+    "ELECTRICITY": "mdi:lightning-bolt",
+    "WATER": "mdi:water",
+    "HEATING": "mdi:radiator",
+    "GAS": "mdi:fire",
+}
 
 
 async def async_setup_entry(
@@ -48,6 +56,13 @@ async def async_setup_entry(
                     candidates.append(
                         EIRCMeterSensor(coordinator, account_data, meter, indication)
                     )
+            candidates.extend(
+                [
+                    EIRCUpdateStatusSensor(coordinator, account_data),
+                    EIRCLastSuccessSensor(coordinator, account_data, "meters"),
+                    EIRCLastSuccessSensor(coordinator, account_data, "balance"),
+                ]
+            )
             for sensor in candidates:
                 if sensor.unique_id not in known_ids:
                     known_ids.add(sensor.unique_id)
@@ -66,6 +81,7 @@ class EIRCSensor(CoordinatorEntity, SensorEntity):
 
     _attr_has_entity_name = False
     _attr_translation_key = "eirc_sensor"
+    _attr_icon = "mdi:cash"
 
     def __init__(
         self, coordinator: EircDataUpdateCoordinator, account_data: dict
@@ -137,7 +153,19 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
             f"eirc_meter_{self._tenancy_id}_{self._meter_reg_id}_{self._scale_id}"
         )
 
-        if meter_data.get("subservice", {}).get("utility") == "ELECTRICITY":
+        subservice = meter_data.get("subservice") or {}
+        utility = subservice.get("utility")
+        self._attr_icon = METER_ICONS.get(utility, "mdi:counter")
+        if utility == "WATER":
+            # EIRC uses WATER for both supplies; only the service name
+            # distinguishes hot water. Unknown water services keep the water icon.
+            service_name = subservice.get("name")
+            if isinstance(
+                service_name, str
+            ) and service_name.strip().casefold().startswith(("горяч", "гвс")):
+                self._attr_icon = "mdi:water-thermometer"
+
+        if utility == "ELECTRICITY":
             self._attr_name = (
                 f"Электроэнергия {indication_data.get('scaleName', 'Unknown')} "
                 f"({meter_data['id']['registration']})"
@@ -198,3 +226,84 @@ class EIRCMeterSensor(CoordinatorEntity, SensorEntity):
             "scale_id": indication_data.get("meterScaleId"),
             "last_update": indication_data.get("previousReadingDate"),
         }
+
+
+class EIRCUpdateStatusSensor(CoordinatorEntity, SensorEntity):
+    """Explain partial and global failures independently of legacy sensors."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "update_status"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_icon = "mdi:cloud-sync"
+    _attr_options: ClassVar[list[str]] = [
+        "ok",
+        "meters_unavailable",
+        "balance_unavailable",
+        "data_unavailable",
+        "authentication_required",
+        "two_factor_required",
+        "connection_error",
+        "update_failed",
+    ]
+
+    def __init__(
+        self, coordinator: EircDataUpdateCoordinator, account_data: dict
+    ) -> None:
+        super().__init__(coordinator)
+        self._tenancy_id = account_data["tenancy"]["register"]
+        self._attr_unique_id = f"eirc_{self._tenancy_id}_update_status"
+        self._attr_device_info = {"identifiers": {(DOMAIN, self._tenancy_id)}}
+
+    @property
+    def available(self) -> bool:
+        """Keep the explanation visible when the API is unavailable."""
+        return self._tenancy_id in (self.coordinator.data or {})
+
+    @property
+    def native_value(self) -> str:
+        if self.coordinator.update_error:
+            return self.coordinator.update_error
+        errors = self.coordinator.account_errors.get(self._tenancy_id, {})
+        if "meters" in errors and "balance" in errors:
+            return "data_unavailable"
+        if "meters" in errors:
+            return "meters_unavailable"
+        if "balance" in errors:
+            return "balance_unavailable"
+        return "ok"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        errors = self.coordinator.account_errors.get(self._tenancy_id, {})
+        return {
+            f"{kind}_{field}": errors.get(kind, {}).get(field)
+            for kind in ("meters", "balance")
+            for field in ("http_status", "eirc_code")
+        }
+
+
+class EIRCLastSuccessSensor(CoordinatorEntity, SensorEntity):
+    """Time of the last successful API read, not the date of a meter reading."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(
+        self, coordinator: EircDataUpdateCoordinator, account_data: dict, kind: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._tenancy_id = account_data["tenancy"]["register"]
+        self._kind = kind
+        self._attr_translation_key = f"{kind}_last_success"
+        self._attr_unique_id = f"eirc_{self._tenancy_id}_{kind}_last_success"
+        self._attr_device_info = {"identifiers": {(DOMAIN, self._tenancy_id)}}
+
+    @property
+    def available(self) -> bool:
+        return self._tenancy_id in (self.coordinator.data or {})
+
+    @property
+    def native_value(self):
+        return self.coordinator.last_success.get(self._tenancy_id, {}).get(self._kind)

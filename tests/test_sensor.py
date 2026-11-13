@@ -56,6 +56,47 @@ class SensorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entity.unique_id, "eirc_meter_test-tenancy-a_test-meter/a_1")
         self.assertEqual(entity.extra_state_attributes["scale_id"], 1)
 
+    async def test_balance_default_icon_does_not_change_identity_or_value(self):
+        entity = sensor.EIRCSensor(self.coordinator, self.data)
+        self.assertEqual(entity._attr_icon, "mdi:cash")
+        self.assertEqual(entity.unique_id, "eirc_test-tenancy-a")
+        self.assertEqual(entity.native_value, 12.5)
+
+    async def test_meter_icons_follow_service_without_changing_meter_data(self):
+        for subservice, expected in [
+            ({"utility": "ELECTRICITY"}, "mdi:lightning-bolt"),
+            ({"utility": "GAS"}, "mdi:fire"),
+            ({"utility": "HEATING"}, "mdi:radiator"),
+            ({"utility": "WATER", "name": "Холодное водоснабжение"}, "mdi:water"),
+            (
+                {"utility": "WATER", "name": "Горячее водоснабжение"},
+                "mdi:water-thermometer",
+            ),
+            (
+                {"utility": "WATER", "name": "  гВс (тестовая услуга) "},
+                "mdi:water-thermometer",
+            ),
+            ({"utility": "WATER", "name": None}, "mdi:water"),
+            ({"utility": "WATER"}, "mdi:water"),
+            ({"utility": "UNKNOWN"}, "mdi:counter"),
+            ({"utility": "FUTURE_SERVICE"}, "mdi:counter"),
+            ({}, "mdi:counter"),
+            (None, "mdi:counter"),
+        ]:
+            with self.subTest(subservice=subservice):
+                meter = self.data["meters"][0]
+                meter["subservice"] = subservice
+                before = dict(meter)
+                entity = self.meter_entity()
+                self.assertEqual(entity._attr_icon, expected)
+                self.assertEqual(
+                    entity.unique_id, "eirc_meter_test-tenancy-a_test-meter/a_1"
+                )
+                self.assertEqual(entity.native_value, 100)
+                self.assertEqual(entity.extra_state_attributes["scale_id"], 1)
+                self.assertEqual(meter, before)
+                self.assertNotIn("_attr_device_class", vars(entity))
+
     async def test_removed_meter_is_unavailable(self):
         entity = self.meter_entity()
         self.data["meters"] = []
@@ -82,7 +123,7 @@ class SensorTests(unittest.IsolatedAsyncioTestCase):
         hass.data = {"eirc": {entry.entry_id: self.coordinator}}
         add_entities = MagicMock()
         await sensor.async_setup_entry(hass, entry, add_entities)
-        self.assertEqual(len(add_entities.call_args.args[0]), 1)
+        self.assertEqual(len(add_entities.call_args.args[0]), 4)
         self.data["meters"] = meters()
         listener = self.coordinator.listeners[0]
         listener()

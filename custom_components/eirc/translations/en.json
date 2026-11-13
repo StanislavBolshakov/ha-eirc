@@ -1,7 +1,37 @@
 {
   "title": "EIRC SPb",
   "entity": {
+    "button": {
+      "refresh": {
+        "name": "Refresh now"
+      }
+    },
     "sensor": {
+      "update_status": {
+        "name": "Update status",
+        "state": {
+          "ok": "Data updated",
+          "meters_unavailable": "Balance updated, meters unavailable",
+          "balance_unavailable": "Meters updated, balance unavailable",
+          "data_unavailable": "Balance and meters unavailable",
+          "authentication_required": "Sign-in required",
+          "two_factor_required": "Sign-in verification required",
+          "connection_error": "Cannot connect to EIRC",
+          "update_failed": "Update failed"
+        },
+        "state_attributes": {
+          "meters_http_status": {"name": "Meters HTTP error status"},
+          "meters_eirc_code": {"name": "Meters EIRC error code"},
+          "balance_http_status": {"name": "Balance HTTP error status"},
+          "balance_eirc_code": {"name": "Balance EIRC error code"}
+        }
+      },
+      "meters_last_success": {
+        "name": "Last successful meter fetch"
+      },
+      "balance_last_success": {
+        "name": "Last successful balance fetch"
+      },
       "eirc_sensor": {
         "state_attributes": {
           "account_id": {
@@ -76,7 +106,7 @@
             "name": "Tariff ID"
           },
           "last_update": {
-            "name": "Last Update"
+            "name": "Previous reading date"
           }
         }
       }
@@ -119,19 +149,22 @@
       },
       "2fa": {
         "title": "Two-Factor Authentication",
-        "description": "Enter the code from the email sent to your mailbox",
+        "description": "EIRC requires sign-in verification. Enter the code from the latest email. After a connection error, you can retry the same code while it is valid.",
         "data": {
           "code": "Verification Code"
         }
       },
       "reauth_confirm": {
         "title": "Reauthentication",
-        "description": "You need to log in again."
+        "description": "The EIRC session is no longer valid or requires sign-in verification. Sign in again; existing meters and their settings will be preserved."
       }
     },
     "error": {
-      "invalid_auth": "Invalid username or password",
-      "cannot_connect": "Cannot connect to server",
+      "invalid_auth": "EIRC rejected the sign-in. Check your phone number and password.",
+      "cannot_connect": "Cannot connect to EIRC or read a valid response. Try again later.",
+      "rate_limited": "EIRC has limited the number of requests. Wait before trying again.",
+      "session_expired": "The verification session has expired. Close setup and start signing in again.",
+      "unknown": "Unexpected error. Check the Home Assistant log.",
       "no_valid_accounts": "No confirmed accounts",
       "proxy_url_required": "HTTP Proxy URL is required when using proxy",
       "invalid_proxy_url": "Invalid HTTP Proxy URL format",
@@ -139,15 +172,43 @@
       "entry_not_found": "Configuration entry not found",
       "2fa_method_not_supported": "2FA method is not supported",
       "2fa_send_failed": "Failed to send 2FA code",
-      "invalid_code": "Invalid verification code"
+      "invalid_code": "The code is incorrect or expired. Check the code from the latest email."
     },
     "abort": {
       "reauth_successful": "Reauthentication successful",
-      "already_configured": "Account already configured"
+      "already_configured": "Account already configured",
+      "2fa_method_not_supported": "EIRC requires a verification method this integration does not support. Email verification codes are supported.",
+      "2fa_send_failed": "Could not send the verification email through EIRC. Try again later.",
+      "rate_limited": "EIRC has limited the number of requests. Wait and start signing in again.",
+      "no_valid_accounts": "No confirmed accounts.",
+      "entry_not_found": "The integration entry was not found.",
+      "cannot_fetch_accounts": "Could not retrieve EIRC accounts. Try again later."
     }
   },
   "options": {
     "step": {
+      "init": {
+        "title": "EIRC",
+        "menu_options": {
+          "account_selection": "Accounts and proxy",
+          "send_readings": "Send meter readings"
+        }
+      },
+      "send_readings": {
+        "title": "Choose an account",
+        "description": "Choose an account to enter readings for all its available meters and tariffs. Fresh EIRC readings will be fetched first.",
+        "data": {"account": "Account"}
+      },
+      "reading_values": {
+        "title": "New readings",
+        "description": "Each tariff shows its previous EIRC reading. Enter new values no smaller than the previous readings. Nothing is sent at this step.",
+        "data": {"readings": "Tariff readings"}
+      },
+      "reading_confirm": {
+        "title": "Confirm submission",
+        "description": "Account: {account}.\n\nCheck all changes (previous → new):\n\n{readings}\n\nOne confirmation sends all listed readings serially. Submission stops on an error without automatic retries.",
+        "data": {"confirm": "I confirm sending these readings"}
+      },
       "account_selection": {
         "title": "Select accounts",
         "description": "Please select which accounts to monitor",
@@ -159,8 +220,30 @@
       }
     },
     "error": {
+      "invalid_account": "Choose an account with available meters belonging to this connection.",
+      "readings_unavailable": "Could not fetch fresh readings for all available meters in this account. Try again later.",
+      "invalid_readings": "Fill in every tariff with a finite number no smaller than its previous reading.",
+      "confirmation_required": "Confirm submission or close the form without sending.",
       "proxy_url_required": "HTTP Proxy URL is required when using proxy",
       "invalid_proxy_url": "Invalid HTTP Proxy URL format"
+    },
+    "abort": {
+      "readings_unavailable": "No meters are available for submission. Refresh data and check the account status.",
+      "readings_sent": "Readings were sent to EIRC. Use Refresh now if you need to fetch the updated data.",
+      "readings_rejected": "EIRC rejected the request. Check the readings and acceptance conditions in the account portal. No automatic retry was made.",
+      "readings_result_unknown": "The submission result is unknown. EIRC may have accepted the readings. Check the account portal before submitting again. No automatic retry was made.",
+      "readings_partial": "Submission stopped.\n\nSent: {sent}\n\nRejected by EIRC: {rejected}\n\nUnknown result: {unknown}\n\nNot attempted: {unattempted}\n\nNo automatic retries were made. Do not resend successful readings. Check unknown results in the EIRC portal first.",
+      "cannot_fetch_accounts": "Could not retrieve EIRC accounts. Try again later.",
+      "reauth_required": "Sign in to EIRC again using the reauthentication request in Home Assistant."
     }
+  },
+  "exceptions": {
+    "refresh_in_progress": {"message": "EIRC data is already being refreshed. Wait for it to finish."},
+    "refresh_rate_limited": {"message": "You can refresh again in {seconds} s. This limit is shared by all accounts in this connection."},
+    "refresh_failed": {"message": "Could not refresh data. Check the account update status."},
+    "connection_error": {"message": "Cannot connect to EIRC. Try refreshing again later."},
+    "update_failed": {"message": "Could not refresh data. Check the account update status."},
+    "authentication_required": {"message": "The EIRC session is no longer valid. Sign in again in the integration settings."},
+    "two_factor_required": {"message": "EIRC requires sign-in verification. Complete reauthentication in the integration settings."}
   }
 }

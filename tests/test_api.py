@@ -109,6 +109,22 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
                 self.client._execute_request.assert_awaited_once()
                 sleep.assert_not_awaited()
 
+    async def test_rejected_write_does_not_reauthenticate_or_clear_session(self):
+        for status in (401, 403):
+            with self.subTest(status=status):
+                before = self.client.get_token_state()
+                self.client._execute_request = AsyncMock(
+                    side_effect=api.EircApiResponseError(status)
+                )
+                self.client.authenticate = AsyncMock()
+                with self.assertRaises(api.EircApiResponseError):
+                    await self.client._api_request(
+                        "post", self.client.SEND_METER_READING_URL
+                    )
+                self.client._execute_request.assert_awaited_once()
+                self.client.authenticate.assert_not_awaited()
+                self.assertEqual(self.client.get_token_state(), before)
+
     async def test_authentication_is_attempted_only_once(self):
         async def renew_session():
             self.client._session_cookie = "test-renewed-cookie"
@@ -260,3 +276,43 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
             ].value,
             "test-value",
         )
+
+    async def test_authentication_rate_limit_preserves_http_status(self):
+        self.client._token_auth = None
+
+        async def handler(request):
+            return web.json_response({}, status=429)
+
+        async with server(handler) as url:
+            self.client.AUTH_URL = url
+            with self.assertRaises(api.EircApiResponseError) as caught:
+                await self.client.authenticate()
+        self.assertEqual(caught.exception.status, 429)
+
+    async def test_verification_preserves_error_status_for_ui(self):
+        for status in (400, 401, 429, 503):
+            with self.subTest(status=status):
+
+                async def handler(request, status=status):
+                    return web.json_response({}, status=status)
+
+                async with server(handler) as url:
+                    self.client.EMAIL_VERIFY_URL = url + "/{transaction_id}"
+                    with self.assertRaises(api.EircApiResponseError) as caught:
+                        await self.client.twofa_authentication(
+                            "test-transaction", "test-code"
+                        )
+                self.assertEqual(caught.exception.status, status)
+
+    async def test_malformed_authentication_response_is_not_success(self):
+        self.client._token_auth = None
+
+        async def handler(request):
+            return web.json_response({"unexpected": "test-response"})
+
+        async with server(handler) as url:
+            self.client.AUTH_URL = url
+            with self.assertRaisesRegex(
+                api.EircApiClientError, "authentication response"
+            ):
+                await self.client.authenticate()

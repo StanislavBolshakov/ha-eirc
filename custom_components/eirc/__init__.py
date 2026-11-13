@@ -16,6 +16,7 @@ from homeassistant.core import (
     ServiceCall,
     ServiceResponse,
     SupportsResponse,
+    callback,
 )
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
@@ -33,7 +34,7 @@ from .coordinator import EircDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 
 SEND_METER_READING_SCHEMA = vol.Schema(
     {
@@ -102,8 +103,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload after HA has saved the new options."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    """Reload actual configuration changes, not persisted authentication tokens."""
+    coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if coordinator and coordinator.settings_changed(entry):
+        async_request_reload(hass, entry)
+
+
+@callback
+def async_request_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Coalesce reauthentication and options update callbacks into one reload."""
+    coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if coordinator:
+        if coordinator.reload_pending:
+            return
+        coordinator.reload_pending = True
+    hass.config_entries.async_schedule_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -56,9 +56,7 @@ class TwoFactorAuthRequired(HomeAssistantError):
     """Raised when 2FA is required during authentication."""
 
     def __init__(self, transaction_id: str, methods: list[str]) -> None:
-        super().__init__(
-            f"2FA required. Transaction ID: {transaction_id}, Methods: {methods}"
-        )
+        super().__init__("EIRC sign-in verification required")
         self.transaction_id = transaction_id
         self.methods = methods
 
@@ -253,7 +251,7 @@ class EIRCApiClient:
                 return await self._execute_request(method, url, headers, **kwargs)
 
             except EircApiResponseError as err:
-                if err.status in (401, 403) and url != self.AUTH_URL:
+                if can_retry and err.status in (401, 403) and url != self.AUTH_URL:
                     if reauthenticated:
                         raise EircAuthenticationError(
                             "API rejected the renewed session"
@@ -316,7 +314,7 @@ class EIRCApiClient:
                 return await resp.json()
 
         except ClientResponseError as err:
-            raise EircApiClientError(f"API call failed: {err.message}") from err
+            raise EircApiResponseError(err.status) from err
         except (JSONDecodeError, ContentTypeError) as err:
             raise EircApiClientError(
                 "Failed to decode server response as JSON."
@@ -387,21 +385,27 @@ class EIRCApiClient:
             ) as response:
                 if response.status == 424:
                     data = await response.json()
+                    if (
+                        not isinstance(data, dict)
+                        or not isinstance(data.get("transactionId"), str)
+                        or not isinstance(data.get("types"), list)
+                    ):
+                        raise EircApiClientError("Unexpected verification challenge")
                     raise TwoFactorAuthRequired(
                         data.get("transactionId"), data.get("types", [])
                     )
 
                 response.raise_for_status()
                 data = await response.json()
+                if not isinstance(data, dict) or not data.get("auth"):
+                    raise EircApiClientError("Unexpected authentication response")
                 self._token_auth = data.get("auth")
                 _LOGGER.debug("Authentication successful.")
 
         except ClientResponseError as err:
             if err.status in (401, 403):
                 raise EircAuthenticationError("EIRC authentication failed") from err
-            raise EircApiClientError(
-                f"Authentication failed with status {err.status}"
-            ) from err
+            raise EircApiResponseError(err.status) from err
 
     async def twofa_authentication(
         self, transaction_id: str, code: str
@@ -410,7 +414,7 @@ class EIRCApiClient:
         url = self.EMAIL_VERIFY_URL.format(transaction_id=transaction_id)
         data = await self._simple_post(url, {"code": code})
 
-        if data is None:
+        if not isinstance(data, dict):
             raise EircApiClientError(
                 "Received an empty response during 2FA verification."
             )
@@ -442,7 +446,7 @@ class EIRCApiClient:
                 resp.raise_for_status()
             _LOGGER.debug("2FA verification email sent successfully.")
         except ClientResponseError as err:
-            raise EircApiClientError("Failed to send 2FA email") from err
+            raise EircApiResponseError(err.status) from err
 
     async def get_accounts(self) -> list[dict[str, Any]]:
         """Fetch all accounts from the API."""

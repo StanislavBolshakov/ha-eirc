@@ -2,6 +2,7 @@
 
 import importlib
 import sys
+from enum import StrEnum
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -10,6 +11,19 @@ from unittest.mock import MagicMock, patch
 class HomeAssistantError(Exception):
     """Stand-in for HA errors."""
 
+    def __init__(
+        self,
+        message="",
+        *,
+        translation_domain=None,
+        translation_key=None,
+        translation_placeholders=None,
+    ):
+        super().__init__(message or translation_key)
+        self.translation_domain = translation_domain
+        self.translation_key = translation_key
+        self.translation_placeholders = translation_placeholders
+
 
 class ConfigEntryAuthFailed(HomeAssistantError):
     """Stand-in for HA authentication failures."""
@@ -17,6 +31,23 @@ class ConfigEntryAuthFailed(HomeAssistantError):
 
 class UpdateFailed(HomeAssistantError):
     """Stand-in for failed refreshes."""
+
+
+class ServiceValidationError(HomeAssistantError):
+    """Stand-in for an actionable service error."""
+
+
+class EntityCategory(StrEnum):
+    DIAGNOSTIC = "diagnostic"
+
+
+class SensorDeviceClass(StrEnum):
+    ENUM = "enum"
+    TIMESTAMP = "timestamp"
+
+
+class ButtonDeviceClass(StrEnum):
+    UPDATE = "update"
 
 
 class DataUpdateCoordinator:
@@ -30,6 +61,10 @@ class DataUpdateCoordinator:
     def async_add_listener(self, listener):
         self.listeners.append(listener)
         return lambda: self.listeners.remove(listener)
+
+    def async_update_listeners(self):
+        for listener in list(self.listeners):
+            listener()
 
 
 class CoordinatorEntity:
@@ -47,15 +82,25 @@ class SensorEntity:
         return self._attr_unique_id
 
 
+async def _async_get_integration(hass, domain):
+    return SimpleNamespace(version="1.2.5")
+
+
 def load_modules():
     """Import production modules without executing integration setup or installing HA."""
     exports = {
         "homeassistant": {},
         "homeassistant.core": {"HomeAssistant": object, "callback": lambda f: f},
         "homeassistant.config_entries": {"ConfigEntry": object},
+        "homeassistant.const": {
+            "EntityCategory": EntityCategory,
+            "__version__": "2026.11.1",
+        },
+        "homeassistant.loader": {"async_get_integration": _async_get_integration},
         "homeassistant.exceptions": {
             "HomeAssistantError": HomeAssistantError,
             "ConfigEntryAuthFailed": ConfigEntryAuthFailed,
+            "ServiceValidationError": ServiceValidationError,
         },
         "homeassistant.helpers": {},
         "homeassistant.helpers.aiohttp_client": {
@@ -68,7 +113,14 @@ def load_modules():
         },
         "homeassistant.helpers.entity_platform": {"AddEntitiesCallback": object},
         "homeassistant.components": {},
-        "homeassistant.components.sensor": {"SensorEntity": SensorEntity},
+        "homeassistant.components.sensor": {
+            "SensorEntity": SensorEntity,
+            "SensorDeviceClass": SensorDeviceClass,
+        },
+        "homeassistant.components.button": {
+            "ButtonEntity": SensorEntity,
+            "ButtonDeviceClass": ButtonDeviceClass,
+        },
     }
     modules = {}
     for name, attrs in exports.items():
@@ -83,11 +135,11 @@ def load_modules():
     with patch.dict(sys.modules, modules):
         return tuple(
             importlib.import_module(f"eirc_under_test.{name}")
-            for name in ("api", "coordinator", "sensor")
+            for name in ("api", "coordinator", "sensor", "button", "diagnostics")
         )
 
 
-api, coordinator, sensor = load_modules()
+api, coordinator, sensor, button, diagnostics = load_modules()
 
 
 def make_coordinator(selected=None):
